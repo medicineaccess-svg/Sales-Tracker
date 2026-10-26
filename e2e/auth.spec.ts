@@ -15,8 +15,8 @@ test('login form validates input', async ({ page }) => {
 
 test('wrong credentials show a safe error', async ({ page }) => {
   await page.goto('/login');
-  await page.getByLabel('Email').fill('nobody@example.invalid');
-  await page.getByLabel('Password').fill('not-a-real-password1');
+  await page.getByLabel('Email', { exact: true }).fill('nobody@example.invalid');
+  await page.getByLabel('Password', { exact: true }).fill('not-a-real-password1');
   await page.getByRole('button', { name: /sign in/i }).click();
   await expect(page.getByRole('alert').first()).toBeVisible();
   await expect(page).toHaveURL(/\/login$/);
@@ -28,8 +28,8 @@ const NPP = { email: process.env.E2E_NPP_EMAIL, password: process.env.E2E_NPP_PA
 
 async function login(page: import('@playwright/test').Page, email: string, password: string) {
   await page.goto('/login');
-  await page.getByLabel('Email').fill(email);
-  await page.getByLabel('Password').fill(password);
+  await page.getByLabel('Email', { exact: true }).fill(email);
+  await page.getByLabel('Password', { exact: true }).fill(password);
   await page.getByRole('button', { name: /sign in/i }).click();
 }
 

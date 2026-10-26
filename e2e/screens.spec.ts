@@ -14,8 +14,8 @@ test.describe('visual smoke', () => {
     page.on('pageerror', (e) => errors.push(e.message));
     page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
     await page.goto('/login');
-    await page.getByLabel('Email').fill(email!);
-    await page.getByLabel('Password').fill(password!);
+    await page.getByLabel('Email', { exact: true }).fill(email!);
+    await page.getByLabel('Password', { exact: true }).fill(password!);
     await page.getByRole('button', { name: /sign in/i }).click();
     await expect(page).toHaveURL(/\/overview$/);
     for (const path of PAGES) {
