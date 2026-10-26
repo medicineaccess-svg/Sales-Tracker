@@ -29,7 +29,7 @@ export function AuthShell({ title, subtitle, children }: { title: string; subtit
             />
           </>
         )}
-        <Logo variant="light" className="relative h-11" />
+        <Logo variant="light" className="h-11" />
         <div className="relative max-w-md text-white">
           <h1 className="text-3xl font-bold leading-tight tracking-tight">Sales intelligence for every department.</h1>
           <p className="mt-3 text-white/70">

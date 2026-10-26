@@ -67,7 +67,7 @@ function Sidebar({
         {collapsed ? (
           <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white text-sm font-bold text-sidebar shadow-sm">IK</span>
         ) : (
-          <Logo variant="light" className="h-9" />
+          <Logo variant="light" className="h-8" />
         )}
         {onToggleCollapsed && !collapsed && (
           <button
