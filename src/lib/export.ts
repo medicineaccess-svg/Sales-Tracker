@@ -57,7 +57,7 @@ export async function downloadXlsx<T>(
   const header = ws.addRow(columns.map((c) => c.header));
   header.font = { bold: true, color: { argb: 'FFFFFFFF' } };
   header.eachCell((cell) => {
-    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF172A5C' } };
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF226192' } };
   });
   const headerRowNumber = header.number;
 

@@ -81,9 +81,9 @@ export function AuditPage() {
           <ErrorState message={friendlyError(error)} onRetry={() => refetch()} />
         ) : (
           <div className="scroll-thin overflow-x-auto">
-            <table className="w-full min-w-[760px] text-sm">
+            <table className="data-table w-full min-w-[760px] text-sm">
               <thead>
-                <tr className="border-b border-line bg-canvas/60 text-left text-[11px] uppercase tracking-wide text-muted">
+                <tr className="border-b border-line bg-surface text-left text-[11px] uppercase tracking-wide text-muted">
                   <th className="w-8 px-3" />
                   <th className="px-3 py-2.5 font-medium">When</th>
                   <th className="px-3 py-2.5 font-medium">Actor</th>
@@ -106,7 +106,7 @@ export function AuditPage() {
                   const isOpen = open === l.id;
                   return (
                     <Fragment key={l.id}>
-                      <tr className="border-b border-line/60 hover:bg-canvas/50">
+                      <tr className="border-b border-line/60">
                         <td className="px-3">
                           {hasDetail && (
                             <button type="button" onClick={() => setOpen(isOpen ? null : l.id)} aria-expanded={isOpen} aria-label="Show details" className="rounded p-1 text-muted hover:bg-brand-50">
@@ -126,7 +126,7 @@ export function AuditPage() {
                         <tr className="border-b border-line/60 bg-canvas/40">
                           <td />
                           <td colSpan={5} className="px-3 py-3">
-                            <pre className="scroll-thin max-h-64 overflow-auto whitespace-pre-wrap rounded-lg bg-white p-3 text-[11px] text-ink/80">
+                            <pre className="scroll-thin max-h-64 overflow-auto whitespace-pre-wrap rounded-lg bg-card p-3 text-[11px] text-ink/80">
                               {JSON.stringify({ changes: l.changes ?? undefined, metadata: l.metadata, entity: l.entity_type ? `${l.entity_type}:${l.entity_id}` : undefined }, null, 2)}
                             </pre>
                           </td>

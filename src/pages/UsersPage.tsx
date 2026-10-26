@@ -270,9 +270,9 @@ export function UsersPage() {
           <ErrorState message={(error as Error).message} onRetry={() => refetch()} />
         ) : (
           <div className="scroll-thin overflow-x-auto">
-            <table className="w-full min-w-[760px] text-sm">
+            <table className="data-table w-full min-w-[760px] text-sm">
               <thead>
-                <tr className="border-b border-line bg-canvas/60 text-left text-[11px] uppercase tracking-wide text-muted">
+                <tr className="border-b border-line bg-surface text-left text-[11px] uppercase tracking-wide text-muted">
                   <th className="px-4 py-3 font-medium">User</th>
                   <th className="px-4 py-3 font-medium">Role</th>
                   <th className="px-4 py-3 font-medium">Department</th>

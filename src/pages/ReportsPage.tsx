@@ -94,9 +94,9 @@ function SyncReport() {
         }
       />
       <div className="scroll-thin mt-3 overflow-x-auto">
-        <table className="w-full min-w-[720px] text-sm">
+        <table className="data-table w-full min-w-[720px] text-sm">
           <thead>
-            <tr className="border-y border-line bg-canvas/60 text-left text-[11px] uppercase tracking-wide text-muted">
+            <tr className="border-y border-line bg-surface text-left text-[11px] uppercase tracking-wide text-muted">
               {['Started', 'Trigger', 'Status', 'Read', 'Inserted', 'Updated', 'Unchanged', 'Conflicts', 'Flagged'].map((h) => (
                 <th key={h} className="px-4 py-2.5 font-medium">
                   {h}
@@ -199,7 +199,7 @@ export function ReportsPage() {
             onClick={() => setReportId(r.id)}
             className={cn(
               'whitespace-nowrap rounded-full border px-3.5 py-1.5 text-xs font-medium transition-colors',
-              reportId === r.id ? 'border-navy bg-navy text-white' : 'border-line bg-white text-ink hover:border-brand/40',
+              reportId === r.id ? 'border-sidebar bg-sidebar text-white shadow-lift ring-2 ring-accent/60' : 'border-line bg-card text-ink hover:-translate-y-0.5 hover:border-accent/50 hover:shadow-card',
             )}
           >
             {r.label}
@@ -270,7 +270,7 @@ export function ReportsPage() {
               <EmptyState title="No records for these filters" />
             ) : (
               <div className="scroll-thin mt-3 max-h-[620px] overflow-auto">
-                <table className="w-full min-w-[720px] text-sm">
+                <table className="data-table w-full min-w-[720px] text-sm">
                   <thead className="sticky top-0 z-10">
                     <tr className="border-y border-line bg-canvas text-left text-[11px] uppercase tracking-wide text-muted">
                       {exportCols.map((c, i) => (
@@ -282,7 +282,7 @@ export function ReportsPage() {
                   </thead>
                   <tbody>
                     {pivoted.map((p) => (
-                      <tr key={p.key} className="border-b border-line/60 hover:bg-brand-50/40">
+                      <tr key={p.key} className="border-b border-line/60 ">
                         <td className="px-4 py-2 font-medium text-ink">{p.key}</td>
                         <td className="tabular px-4 py-2 text-right">{formatNumber(p.records)}</td>
                         {!shippingOnly &&
@@ -301,7 +301,7 @@ export function ReportsPage() {
                     ))}
                   </tbody>
                   <tfoot>
-                    <tr className="sticky bottom-0 border-t-2 border-navy/20 bg-white font-semibold">
+                    <tr className="sticky bottom-0 border-t-2 border-navy/20 bg-card font-semibold">
                       <td className="px-4 py-2.5">Total</td>
                       <td className="tabular px-4 py-2.5 text-right">{formatNumber(totals.records)}</td>
                       {!shippingOnly &&

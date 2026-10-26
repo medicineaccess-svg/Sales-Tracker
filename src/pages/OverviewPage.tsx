@@ -49,8 +49,8 @@ export function OverviewPage() {
         <ErrorState message={friendlyError(error)} onRetry={() => refetch()} />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <KpiCard index={0} loading={isLoading} icon={IndianRupee} label={`INR value · ${fy}`} value={formatInrShort(data?.totals.inr_value)} sub="Source-reported INR Value" />
-          <KpiCard index={1} loading={isLoading} icon={ClipboardList} label={`Sales records · ${fy}`} value={formatNumber(data?.totals.records)} sub={`${formatNumber(all?.totals.records)} records in total`} />
+          <KpiCard index={0} loading={isLoading} icon={IndianRupee} highlight label={`INR value · ${fy}`} numeric={data ? Number(data.totals.inr_value) : null} format={formatInrShort} sub="Source-reported INR Value" />
+          <KpiCard index={1} loading={isLoading} icon={ClipboardList} label={`Sales records · ${fy}`} numeric={data ? Number(data.totals.records) : null} format={(v) => formatNumber(Math.round(v))} sub={`${formatNumber(all?.totals.records)} records in total`} />
           <KpiCard
             index={2}
             loading={isLoading}
@@ -110,11 +110,11 @@ export function OverviewPage() {
                   whileHover={allowed && !reduce ? { x: 3 } : undefined}
                   className={cn(
                     'flex w-full items-center gap-3 rounded-xl border p-3 text-left transition-colors',
-                    active ? 'border-brand/25 hover:bg-brand-50' : 'border-line',
+                    active ? 'border-brand/25 hover:border-accent/50 hover:bg-accent-50' : 'border-line',
                     !allowed && 'cursor-not-allowed opacity-50',
                   )}
                 >
-                  <span className={cn('flex h-10 w-10 items-center justify-center rounded-lg', active ? 'bg-navy text-white' : 'bg-slate-100 text-muted')}>
+                  <span className={cn('flex h-10 w-10 items-center justify-center rounded-lg', active ? 'bg-sidebar text-white' : 'bg-surface text-muted')}>
                     <Icon className="h-5 w-5" />
                   </span>
                   <span className="flex-1">
@@ -140,9 +140,9 @@ export function OverviewPage() {
           }
         />
         <div className="scroll-thin mt-3 overflow-x-auto">
-          <table className="w-full min-w-[640px] text-sm">
+          <table className="data-table w-full min-w-[640px] text-sm">
             <thead>
-              <tr className="border-y border-line bg-canvas/60 text-left text-[11px] uppercase tracking-wide text-muted">
+              <tr className="border-y border-line bg-surface text-left text-[11px] uppercase tracking-wide text-muted">
                 <th className="px-5 py-2.5 font-medium">Date</th>
                 <th className="px-5 py-2.5 font-medium">Product</th>
                 <th className="px-5 py-2.5 font-medium">Hospital</th>

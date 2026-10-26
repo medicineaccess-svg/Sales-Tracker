@@ -39,15 +39,15 @@ export function DepartmentSelector({ open, onOpenChange }: { open: boolean; onOp
               type="button"
               onClick={() => choose(d.code, active, allowed)}
               disabled={!allowed}
-              initial={reduce ? false : { opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.05 }}
+              initial={reduce ? false : { opacity: 0, y: 14, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={{ delay: i * 0.06, type: 'spring', stiffness: 320, damping: 26 }}
               whileHover={allowed && !reduce ? { y: -4, rotateX: 2, rotateY: -2 } : undefined}
               style={{ transformPerspective: 800 }}
               className={cn(
                 'group relative flex h-full flex-col rounded-2xl border p-5 text-left transition-shadow',
-                active ? 'border-brand/30 bg-gradient-to-br from-white to-brand-50 hover:shadow-lift' : 'border-line bg-white',
-                current && 'ring-2 ring-brand',
+                active ? 'border-brand/30 bg-gradient-to-br from-card to-brand-50 hover:border-accent/60 hover:shadow-lift' : 'border-line bg-surface/60',
+                current && 'ring-2 ring-accent ring-offset-2 ring-offset-card',
                 !allowed && 'cursor-not-allowed opacity-60',
               )}
               aria-label={`${d.name} — ${active ? 'Active' : 'Coming soon'}`}
@@ -56,16 +56,16 @@ export function DepartmentSelector({ open, onOpenChange }: { open: boolean; onOp
                 <span
                   className={cn(
                     'flex h-11 w-11 items-center justify-center rounded-xl',
-                    active ? 'bg-navy text-white' : 'bg-slate-100 text-muted',
+                    active ? 'bg-sidebar text-white transition-transform duration-300 group-hover:-rotate-6 group-hover:scale-110' : 'bg-card text-muted',
                   )}
                 >
                   <Icon className="h-5 w-5" aria-hidden />
                 </span>
-                {active ? <Badge tone="success">Active</Badge> : <Badge tone="neutral">Coming soon</Badge>}
+                {current ? <Badge tone="accent">Current</Badge> : active ? <Badge tone="success">Active</Badge> : <Badge tone="neutral">Coming soon</Badge>}
               </div>
               <p className="text-base font-semibold text-navy">{d.name}</p>
               <p className="mt-1 flex-1 text-sm text-muted">{d.description}</p>
-              <span className="mt-4 inline-flex items-center gap-1 text-xs font-medium text-brand">
+              <span className={cn('mt-4 inline-flex items-center gap-1 text-xs font-semibold', active && allowed ? 'text-accent-700' : 'text-muted')}>
                 {!allowed ? (
                   <>
                     <Lock className="h-3.5 w-3.5" aria-hidden /> No access

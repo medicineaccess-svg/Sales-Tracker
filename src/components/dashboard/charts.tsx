@@ -1,12 +1,12 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import {
+  Area,
+  AreaChart,
   Bar,
   BarChart,
   CartesianGrid,
   Cell,
   Legend,
-  Line,
-  LineChart,
   Pie,
   PieChart,
   ResponsiveContainer,
@@ -21,8 +21,9 @@ import { CURRENCY_COLOR, CURRENCY_LABEL, CURRENCY_ORDER, SERIES, SERIES_OTHER, f
 import type { CurrencyBucket, DashboardData, GroupTotals } from '@/types/database';
 import { cn } from '@/lib/utils';
 
-const AXIS = { fontSize: 11, fill: '#68758a' };
-const GRID = '#eef1f6';
+const AXIS = { fontSize: 11, fill: '#55606c' };
+const GRID = '#ece6db';
+const CURSOR = 'rgba(34,97,146,0.07)';
 
 // ---------------------------------------------------------------------------
 // Shared chrome
@@ -42,8 +43,10 @@ export function ChartCard({
   table,
   height = 300,
   className,
+  footer,
   children,
 }: {
+  footer?: ReactNode;
   title: string;
   description?: ReactNode;
   loading?: boolean;
@@ -67,7 +70,7 @@ export function ChartCard({
               <button
                 type="button"
                 onClick={() => setShowTable((s) => !s)}
-                className="rounded-md p-1.5 text-muted hover:bg-brand-50 hover:text-navy"
+                className="rounded-lg p-1.5 text-muted transition-colors hover:bg-accent-50 hover:text-accent-700"
                 aria-label={showTable ? 'Show chart' : 'Show data table'}
                 title={showTable ? 'Show chart' : 'Show data table'}
               >
@@ -84,8 +87,8 @@ export function ChartCard({
           <EmptyState title="No data for these filters" description="Adjust or reset the filters to see results." className="py-10" />
         ) : showTable && table ? (
           <div className="scroll-thin max-h-[340px] overflow-auto">
-            <table className="w-full text-xs">
-              <thead className="sticky top-0 bg-white">
+            <table className="data-table w-full text-xs">
+              <thead className="sticky top-0 bg-card">
                 <tr className="border-b border-line text-left text-muted">
                   {table.columns.map((c, i) => (
                     <th key={c} className={cn('px-2 py-2 font-medium', i > 0 && 'text-right')}>
@@ -108,8 +111,11 @@ export function ChartCard({
             </table>
           </div>
         ) : (
-          <div style={{ height }}>{children}</div>
+          <div style={{ height }} className="animate-[fadeIn_0.4s_ease-out]">
+            {children}
+          </div>
         )}
+        {footer && !loading && !empty && footer}
       </div>
     </Card>
   );
@@ -117,7 +123,7 @@ export function ChartCard({
 
 function TooltipBox({ title, rows }: { title: string; rows: { label: string; value: string; color?: string }[] }) {
   return (
-    <div className="rounded-xl border border-line bg-white/95 px-3 py-2 text-xs shadow-lift backdrop-blur">
+    <div className="rounded-xl border border-line bg-card/95 px-3 py-2 text-xs shadow-lift backdrop-blur">
       <p className="mb-1 font-semibold text-navy">{title}</p>
       {rows.map((r) => (
         <p key={r.label} className="flex items-center justify-between gap-4">
@@ -170,7 +176,7 @@ export function MonthlyCurrencyBars({
         <XAxis dataKey="label" tick={AXIS} tickLine={false} axisLine={{ stroke: GRID }} />
         <YAxis tick={AXIS} tickLine={false} axisLine={false} tickFormatter={shortMoney} width={48} />
         <Tooltip
-          cursor={{ fill: 'rgba(49,87,164,0.06)' }}
+          cursor={{ fill: CURSOR }}
           content={({ active, payload, label }) =>
             active && payload?.length ? (
               <TooltipBox
@@ -234,7 +240,7 @@ export function MonthlyInrBars({ monthly }: { monthly: DashboardData['monthly'] 
         <XAxis dataKey="label" tick={AXIS} tickLine={false} axisLine={{ stroke: GRID }} />
         <YAxis tick={AXIS} tickLine={false} axisLine={false} tickFormatter={(v) => formatInrShort(v).replace('₹', '')} width={56} />
         <Tooltip
-          cursor={{ fill: 'rgba(49,87,164,0.06)' }}
+          cursor={{ fill: CURSOR }}
           content={({ active, payload, label }) =>
             active && payload?.length ? (
               <TooltipBox
@@ -247,7 +253,8 @@ export function MonthlyInrBars({ monthly }: { monthly: DashboardData['monthly'] 
             ) : null
           }
         />
-        <Bar dataKey="inr" name="INR Value" fill={SERIES[0]} radius={[4, 4, 0, 0]} maxBarSize={40} animationDuration={600} />
+        <Legend iconType="square" iconSize={10} wrapperStyle={{ fontSize: 12 }} />
+        <Bar dataKey="inr" name="INR Value (source-reported)" fill={SERIES[0]} radius={[4, 4, 0, 0]} maxBarSize={40} animationDuration={600} />
       </BarChart>
     </ResponsiveContainer>
   );
@@ -255,9 +262,16 @@ export function MonthlyInrBars({ monthly }: { monthly: DashboardData['monthly'] 
 
 export function TrendLine({ monthly, metric }: { monthly: DashboardData['monthly']; metric: 'inr' | 'records' }) {
   const data = useMonthlyInr(monthly);
+  const color = metric === 'inr' ? SERIES[0] : SERIES[3];
   return (
     <ResponsiveContainer width="100%" height="100%">
-      <LineChart data={data} margin={{ top: 12, right: 16, left: 0, bottom: 0 }}>
+      <AreaChart data={data} margin={{ top: 12, right: 16, left: 0, bottom: 0 }}>
+        <defs>
+          <linearGradient id={`trend-fill-${metric}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={color} stopOpacity={0.28} />
+            <stop offset="100%" stopColor={color} stopOpacity={0.02} />
+          </linearGradient>
+        </defs>
         <CartesianGrid stroke={GRID} vertical={false} />
         <XAxis dataKey="label" tick={AXIS} tickLine={false} axisLine={{ stroke: GRID }} />
         <YAxis
@@ -268,29 +282,33 @@ export function TrendLine({ monthly, metric }: { monthly: DashboardData['monthly
           tickFormatter={(v) => (metric === 'inr' ? formatInrShort(v).replace('₹', '') : formatNumber(v))}
         />
         <Tooltip
-          cursor={{ stroke: '#c6cfdf', strokeDasharray: '4 4' }}
+          cursor={{ stroke: '#b9ae9c', strokeDasharray: '4 4' }}
           content={({ active, payload, label }) =>
             active && payload?.length ? (
               <TooltipBox
                 title={String(label)}
                 rows={[
-                  { label: 'INR Value', value: formatMoney(Number(payload[0].payload.inr), 'INR'), color: metric === 'inr' ? SERIES[0] : undefined },
-                  { label: 'Records', value: formatNumber(payload[0].payload.records), color: metric === 'records' ? SERIES[0] : undefined },
+                  { label: 'INR Value', value: formatMoney(Number(payload[0].payload.inr), 'INR'), color: metric === 'inr' ? color : undefined },
+                  { label: 'Records', value: formatNumber(payload[0].payload.records), color: metric === 'records' ? color : undefined },
                 ]}
               />
             ) : null
           }
         />
-        <Line
+        <Legend iconType="plainline" iconSize={14} wrapperStyle={{ fontSize: 12 }} />
+        <Area
           type="monotone"
           dataKey={metric}
-          stroke={SERIES[0]}
-          strokeWidth={2}
-          dot={{ r: 4, strokeWidth: 2, fill: '#fff' }}
-          activeDot={{ r: 6, strokeWidth: 2, fill: '#fff' }}
-          animationDuration={700}
+          name={metric === 'inr' ? 'INR Value (source-reported)' : 'Records'}
+          stroke={color}
+          strokeWidth={2.5}
+          fill={`url(#trend-fill-${metric})`}
+          dot={{ r: 3.5, strokeWidth: 2, fill: '#fbfaf7', stroke: color }}
+          activeDot={{ r: 6, strokeWidth: 2, fill: '#ef8557', stroke: '#fbfaf7' }}
+          animationDuration={900}
+          animationEasing="ease-out"
         />
-      </LineChart>
+      </AreaChart>
     </ResponsiveContainer>
   );
 }
@@ -335,14 +353,14 @@ export function BreakdownBars({ rows, metric, color = SERIES[0] }: { rows: Group
         <YAxis
           type="category"
           dataKey="key"
-          tick={{ ...AXIS, fill: '#202a3a' }}
+          tick={{ ...AXIS, fill: '#1e2a36' }}
           tickLine={false}
           axisLine={false}
           width={140}
           tickFormatter={(v: string) => (v.length > 22 ? `${v.slice(0, 21)}…` : v)}
         />
         <Tooltip
-          cursor={{ fill: 'rgba(49,87,164,0.06)' }}
+          cursor={{ fill: CURSOR }}
           content={({ active, payload }) =>
             active && payload?.length ? (
               <TooltipBox
@@ -356,7 +374,8 @@ export function BreakdownBars({ rows, metric, color = SERIES[0] }: { rows: Group
             ) : null
           }
         />
-        <Bar dataKey="metric" fill={color} radius={[0, 4, 4, 0]} maxBarSize={22} animationDuration={600} />
+        <Legend iconType="square" iconSize={10} wrapperStyle={{ fontSize: 12 }} />
+        <Bar dataKey="metric" name={METRIC_LABEL[metric]} fill={color} radius={[0, 6, 6, 0]} maxBarSize={22} animationDuration={700} />
       </BarChart>
     </ResponsiveContainer>
   );
@@ -385,7 +404,7 @@ export function ContributionDonut({ rows, metric, maxSlices = 7 }: { rows: Group
       <div className="h-56 sm:h-full sm:w-1/2">
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
-            <Pie data={data} dataKey="value" nameKey="name" innerRadius="58%" outerRadius="88%" paddingAngle={1} stroke="#fff" strokeWidth={2} animationDuration={700}>
+            <Pie data={data} dataKey="value" nameKey="name" innerRadius="58%" outerRadius="88%" paddingAngle={1} stroke="#fbfaf7" strokeWidth={2} animationDuration={800} animationEasing="ease-out">
               {data.map((d, i) => (
                 <Cell key={d.name} fill={d.name === 'Other' ? SERIES_OTHER : SERIES[i % SERIES.length]} />
               ))}
@@ -413,7 +432,9 @@ export function ContributionDonut({ rows, metric, maxSlices = 7 }: { rows: Group
               <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: d.name === 'Other' ? SERIES_OTHER : SERIES[i % SERIES.length] }} />
               <span className="truncate text-ink">{d.name}</span>
             </span>
-            <span className="tabular shrink-0 text-muted">{((d.value / total) * 100).toFixed(1)}%</span>
+            <span className="tabular shrink-0 text-muted">
+              {metric === 'inr_value' ? formatInrShort(d.value) : formatNumber(d.value)} · <span className="font-semibold text-ink">{((d.value / total) * 100).toFixed(1)}%</span>
+            </span>
           </li>
         ))}
       </ul>
@@ -442,8 +463,8 @@ export function MetricSwitch<T extends string>({
           aria-checked={value === o.value}
           onClick={() => onChange(o.value)}
           className={cn(
-            'rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors',
-            value === o.value ? 'bg-white text-navy shadow-sm' : 'text-muted hover:text-navy',
+            'rounded-md px-2.5 py-1 text-[11px] font-semibold transition-all duration-200',
+            value === o.value ? 'bg-card text-navy shadow-sm ring-1 ring-accent/50' : 'text-muted hover:text-navy',
           )}
         >
           {o.label}

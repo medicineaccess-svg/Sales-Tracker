@@ -49,7 +49,7 @@ export function Modal({ open, onOpenChange, title, description, children, footer
                 {...panelMotion}
                 transition={{ type: 'spring', stiffness: 380, damping: 34 }}
                 className={cn(
-                  'fixed z-50 flex flex-col bg-white shadow-lift focus:outline-none',
+                  'fixed z-50 flex flex-col bg-card shadow-lift focus:outline-none',
                   variant === 'right'
                     ? cn('inset-y-0 right-0 w-full', widths[size])
                     : cn('left-1/2 top-1/2 max-h-[92vh] w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 rounded-2xl', widths[size]),

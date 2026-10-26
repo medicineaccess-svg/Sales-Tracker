@@ -95,7 +95,7 @@ export function SettingsPage() {
         description={isAdmin ? 'Department configuration, reporting definitions and synchronisation settings.' : 'Application settings (read-only for department users).'}
       />
       {!isAdmin && (
-        <div className="mb-4 flex items-center gap-2 rounded-xl border border-line bg-white px-4 py-3 text-sm text-muted">
+        <div className="mb-4 flex items-center gap-2 rounded-xl border border-line bg-card px-4 py-3 text-sm text-muted">
           <Lock className="h-4 w-4" /> Only administrators can change these settings.
         </div>
       )}

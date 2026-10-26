@@ -133,7 +133,7 @@ export function SyncPage() {
       </AnimatePresence>
 
       {notConfigured && (
-        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-[#7a4a0d]">
+        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-[#6b3f0a]">
           <p className="font-medium">Google Sheets access is not configured yet</p>
           <p className="mt-1 text-xs">
             Add a Google service-account key as the Edge Function secret <code>GOOGLE_SERVICE_ACCOUNT_JSON</code> and share the sheet
@@ -250,9 +250,9 @@ export function SyncPage() {
           <EmptyState title="No synchronisations yet" />
         ) : (
           <div className="scroll-thin mt-3 overflow-x-auto">
-            <table className="w-full min-w-[820px] text-sm">
+            <table className="data-table w-full min-w-[820px] text-sm">
               <thead>
-                <tr className="border-y border-line bg-canvas/60 text-left text-[11px] uppercase tracking-wide text-muted">
+                <tr className="border-y border-line bg-surface text-left text-[11px] uppercase tracking-wide text-muted">
                   {['Started', 'Trigger', 'Status', 'Read', 'Inserted', 'Updated', 'Unchanged', 'Conflicts', 'Flagged', 'Invalid', 'Missing'].map((h, i) => (
                     <th key={h} className={`px-4 py-2.5 font-medium ${i > 2 ? 'text-right' : ''}`}>
                       {h}

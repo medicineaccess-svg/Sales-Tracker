@@ -47,7 +47,7 @@ export function LoginPage() {
   return (
     <AuthShell title="Sign in" subtitle="Use the account provided by your administrator.">
       {!supabaseConfigured && (
-        <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-[#7a4a0d]">
+        <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-[#6b3f0a]">
           The application is not configured: set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.
         </div>
       )}

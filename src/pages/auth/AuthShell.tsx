@@ -8,22 +8,22 @@ export function AuthShell({ title, subtitle, children }: { title: string; subtit
   const reduce = useReducedMotion();
   return (
     <div className="grid min-h-screen lg:grid-cols-[1.1fr_1fr]">
-      <div className="relative hidden overflow-hidden bg-gradient-to-br from-navy via-navy-700 to-brand lg:flex lg:flex-col lg:justify-between lg:p-12">
+      <div className="relative hidden overflow-hidden bg-sidebar lg:flex lg:flex-col lg:justify-between lg:p-12">
         {/* Subtle animated background shapes */}
         {!reduce && (
           <>
             <motion.div
-              className="absolute -left-24 -top-24 h-96 w-96 rounded-full bg-white/5"
+              className="absolute -left-24 -top-24 h-96 w-96 rounded-full bg-sidebar-light/60"
               animate={{ y: [0, 24, 0], x: [0, 12, 0] }}
               transition={{ duration: 18, repeat: Infinity, ease: 'easeInOut' }}
             />
             <motion.div
-              className="absolute -bottom-32 right-[-80px] h-[28rem] w-[28rem] rounded-full bg-white/[0.04]"
+              className="absolute -bottom-32 right-[-80px] h-[28rem] w-[28rem] rounded-full bg-accent/15 blur-2xl"
               animate={{ y: [0, -20, 0] }}
               transition={{ duration: 22, repeat: Infinity, ease: 'easeInOut' }}
             />
             <motion.div
-              className="absolute right-24 top-40 h-40 w-40 rotate-12 rounded-3xl border border-white/10"
+              className="absolute right-24 top-40 h-40 w-40 rotate-12 rounded-3xl border border-accent/40"
               animate={{ rotate: [12, 20, 12] }}
               transition={{ duration: 26, repeat: Infinity, ease: 'easeInOut' }}
             />
@@ -31,7 +31,7 @@ export function AuthShell({ title, subtitle, children }: { title: string; subtit
         )}
         <Logo variant="light" className="relative h-11" />
         <div className="relative max-w-md text-white">
-          <h1 className="text-3xl font-semibold leading-tight tracking-tight">Sales intelligence for every department.</h1>
+          <h1 className="text-3xl font-bold leading-tight tracking-tight">Sales intelligence for every department.</h1>
           <p className="mt-3 text-white/70">
             Track Named Patient Program sales, reconcile with Google Sheets, and report with confidence — securely.
           </p>
@@ -42,7 +42,7 @@ export function AuthShell({ title, subtitle, children }: { title: string; subtit
               { icon: ShieldCheck, text: 'Department-level access enforced by the database' },
             ].map(({ icon: Icon, text }) => (
               <li key={text} className="flex items-center gap-3">
-                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/10">
+                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent text-accent-ink">
                   <Icon className="h-4 w-4" aria-hidden />
                 </span>
                 {text}
@@ -57,14 +57,14 @@ export function AuthShell({ title, subtitle, children }: { title: string; subtit
           initial={reduce ? false : { opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.35, ease: 'easeOut' }}
-          className="w-full max-w-sm"
+          className="w-full max-w-sm rounded-3xl border border-line/70 bg-card p-6 shadow-lift sm:p-8"
         >
           <div className="mb-8 lg:hidden">
             <Logo className="h-10" />
           </div>
-          <h2 className="text-2xl font-semibold tracking-tight text-navy">{title}</h2>
+          <h2 className="text-2xl font-bold tracking-tight text-navy">{title}</h2>
           {subtitle && <p className="mt-1 text-sm text-muted">{subtitle}</p>}
-          <div className="mt-8">{children}</div>
+          <div className="mt-6">{children}</div>
         </motion.div>
       </div>
     </div>

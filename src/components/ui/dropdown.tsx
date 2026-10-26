@@ -18,7 +18,7 @@ export function DropdownContent({
         align={align}
         sideOffset={6}
         className={cn(
-          'z-50 min-w-48 rounded-xl border border-line bg-white p-1.5 shadow-lift',
+          'z-50 min-w-48 rounded-xl border border-line bg-card p-1.5 shadow-lift',
           'data-[state=open]:animate-[fadeIn_120ms_ease-out]',
           className,
         )}

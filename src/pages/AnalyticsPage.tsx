@@ -161,7 +161,7 @@ export function AnalyticsPage() {
                   {issues.data.map(([issue, n]) => (
                     <li key={issue} className="flex items-center justify-between rounded-lg bg-canvas px-3 py-2 text-sm">
                       <span>{DATA_ISSUE_LABELS[issue as DataIssue] ?? issue}</span>
-                      <span className="tabular font-semibold text-[#a86412]">{n}</span>
+                      <span className="tabular font-semibold text-[#8a5410]">{n}</span>
                     </li>
                   ))}
                 </ul>

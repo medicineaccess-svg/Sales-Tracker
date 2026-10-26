@@ -3,7 +3,7 @@ import { cn } from '@/lib/utils';
 
 const fieldBase =
   'w-full rounded-lg border border-line bg-white px-3 text-sm text-ink placeholder:text-muted/70 ' +
-  'transition-colors focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 ' +
+  'transition-colors focus:border-brand focus:outline-none focus:ring-3 focus:ring-brand/20 ' +
   'disabled:cursor-not-allowed disabled:bg-canvas aria-[invalid=true]:border-danger aria-[invalid=true]:ring-danger/15';
 
 export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(({ className, ...props }, ref) => (

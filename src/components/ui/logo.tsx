@@ -17,7 +17,7 @@ export function Logo({ className, variant = 'dark' }: { className?: string; vari
     <img
       src={BRAND_LOGO_URL}
       alt="Ikris Pharma Network"
-      className={cn('h-9 w-auto object-contain', variant === 'light' && 'rounded-md bg-white px-2 py-1', className)}
+      className={cn('h-9 w-auto object-contain', variant === 'light' && 'rounded-md bg-card px-2 py-1', className)}
       onError={() => setFailed(true)}
       referrerPolicy="no-referrer"
     />

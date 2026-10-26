@@ -28,7 +28,7 @@ interface Column {
 }
 
 const COLUMNS: Column[] = [
-  { id: 'date', label: 'Date', sort: 'sale_date', render: (r) => (r.sale_date ? formatDate(r.sale_date) : <span className="text-[#a86412]">No date</span>), defaultVisible: true },
+  { id: 'date', label: 'Date', sort: 'sale_date', render: (r) => (r.sale_date ? formatDate(r.sale_date) : <span className="text-[#8a5410]">No date</span>), defaultVisible: true },
   { id: 'voucher', label: 'Voucher', render: (r) => <span className="font-mono text-[11px]">{r.voucher_no ?? '—'}</span>, defaultVisible: true },
   { id: 'particulars', label: 'Particulars', render: (r) => r.particulars, defaultVisible: true },
   { id: 'product', label: 'Product', sort: 'product_name', render: (r) => r.product_name, defaultVisible: true },
@@ -200,7 +200,7 @@ export function SalesPage() {
           <label className="flex items-center gap-2 text-xs text-muted">
             <input
               type="checkbox"
-              className="h-4 w-4 accent-[#3157a4]"
+              className="h-4 w-4 accent-[#226192]"
               checked={!!filters.include_archived}
               onChange={(e) => update({ include_archived: e.target.checked || undefined })}
             />
@@ -231,9 +231,9 @@ export function SalesPage() {
           <ErrorState message={friendlyError(error)} onRetry={() => refetch()} />
         ) : (
           <div className="scroll-thin overflow-x-auto">
-            <table className="w-full min-w-[900px] text-sm">
+            <table className="data-table w-full min-w-[900px] text-sm">
               <thead>
-                <tr className="border-b border-line bg-canvas/60 text-left text-[11px] uppercase tracking-wide text-muted">
+                <tr className="border-b border-line bg-surface text-left text-[11px] uppercase tracking-wide text-muted">
                   {cols.map((c) => (
                     <th key={c.id} scope="col" className={cn('whitespace-nowrap px-4 py-3 font-medium', c.align === 'right' && 'text-right')} aria-sort={c.sort && sort === c.sort ? (ascending ? 'ascending' : 'descending') : undefined}>
                       {c.sort ? (
@@ -268,7 +268,7 @@ export function SalesPage() {
                     onClick={() => setSelected(r.id)}
                     onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), setSelected(r.id))}
                     className={cn(
-                      'cursor-pointer border-b border-line/60 transition-colors hover:bg-brand-50/60 focus:bg-brand-50 focus:outline-none',
+                      'cursor-pointer border-b border-line/60 transition-colors focus:outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent',
                       r.status === 'archived' && 'opacity-60',
                     )}
                   >
@@ -279,7 +279,7 @@ export function SalesPage() {
                     ))}
                     <td className="px-2">
                       {(r.needs_review || r.pending_source) && (
-                        <TriangleAlert className={cn('h-4 w-4', r.pending_source ? 'text-danger' : 'text-warning')} aria-label={r.pending_source ? 'Sync conflict' : 'Needs review'} />
+                        <TriangleAlert className={cn('h-4 w-4', r.pending_source ? 'text-danger' : 'text-[#8a5410]')} aria-label={r.pending_source ? 'Sync conflict' : 'Needs review'} />
                       )}
                     </td>
                   </tr>

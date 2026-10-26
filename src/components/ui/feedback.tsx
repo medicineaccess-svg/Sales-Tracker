@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils';
 import { Button } from './button';
 
 export function Skeleton({ className }: { className?: string }) {
-  return <div className={cn('animate-pulse rounded-md bg-slate-200/70', className)} aria-hidden />;
+  return <div className={cn('animate-pulse rounded-md bg-line/70', className)} aria-hidden />;
 }
 
 export function FullPageLoader({ label = 'Loading…' }: { label?: string }) {
@@ -33,7 +33,7 @@ export function EmptyState({
 }) {
   return (
     <div className={cn('flex flex-col items-center justify-center px-6 py-12 text-center', className)}>
-      <div className="mb-3 rounded-full bg-brand-50 p-3 text-brand">{icon ?? <Inbox className="h-6 w-6" aria-hidden />}</div>
+      <div className="mb-3 rounded-2xl bg-accent-50 p-3 text-accent-700 shadow-sm">{icon ?? <Inbox className="h-6 w-6" aria-hidden />}</div>
       <p className="text-sm font-semibold text-ink">{title}</p>
       {description && <p className="mt-1 max-w-md text-sm text-muted">{description}</p>}
       {action && <div className="mt-4">{action}</div>}
@@ -71,7 +71,7 @@ export function StaleBanner({ message, onRetry }: { message: string; onRetry?: (
   return (
     <div
       role="status"
-      className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-[#7a4a0d]"
+      className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-[#6b3f0a]"
     >
       <span className="flex items-center gap-2">
         <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden />

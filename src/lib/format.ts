@@ -10,16 +10,20 @@ export const CURRENCY_LABEL: Record<CurrencyBucket, string> = {
 
 /** Series colour per currency — fixed by entity, never by rank. */
 export const CURRENCY_COLOR: Record<CurrencyBucket, string> = {
-  USD: '#3157a4',
-  EUR: '#eb6834',
-  GBP: '#6250d6',
-  INR: '#1baf7a',
-  UNSPECIFIED: '#8a93a3',
+  USD: '#226192',
+  EUR: '#ef8557',
+  GBP: '#7652c7',
+  INR: '#1f9e86',
+  UNSPECIFIED: '#8f8a80',
 };
 
-/** Validated categorical order (dataviz validator: adjacent CVD ΔE ≥ 9.1, normal-vision ≥ 19.6). */
-export const SERIES = ['#3157a4', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#6250d6', '#e34948'];
-export const SERIES_OTHER = '#8a93a3';
+/**
+ * Brand-derived categorical order (#226192 blue, #EF8557 orange + accessible shades).
+ * Validated: adjacent CVD ΔE ≥ 11.4, normal-vision ΔE ≥ 20.1 on the #FBFAF7 card surface.
+ * Lighter slots sit below 3:1 contrast, so every chart ships tooltips and a data-table view.
+ */
+export const SERIES = ['#226192', '#ef8557', '#7652c7', '#1f9e86', '#c98a00', '#5d9be0', '#b4532b'];
+export const SERIES_OTHER = '#8f8a80';
 
 export const CURRENCY_ORDER: CurrencyBucket[] = ['USD', 'EUR', 'GBP', 'INR', 'UNSPECIFIED'];
 

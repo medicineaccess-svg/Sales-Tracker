@@ -145,7 +145,7 @@ export function SalesFormDialog({
             error={errors.voucher_no?.message}
             hint={
               duplicate ? (
-                <span className="inline-flex items-center gap-1 text-[#a86412]">
+                <span className="inline-flex items-center gap-1 text-[#8a5410]">
                   <AlertTriangle className="h-3 w-3" /> Another record already uses this voucher number
                 </span>
               ) : undefined
@@ -242,16 +242,16 @@ export function SalesFormDialog({
 
         {editing && issues.length > 0 && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm">
-            <p className="mb-2 flex items-center gap-2 font-medium text-[#7a4a0d]">
+            <p className="mb-2 flex items-center gap-2 font-medium text-[#6b3f0a]">
               <AlertTriangle className="h-4 w-4" /> Data-quality flags from the sheet
             </p>
-            <ul className="ml-6 list-disc space-y-0.5 text-xs text-[#7a4a0d]">
+            <ul className="ml-6 list-disc space-y-0.5 text-xs text-[#6b3f0a]">
               {issues.map((i) => (
                 <li key={i}>{DATA_ISSUE_LABELS[i] ?? i}</li>
               ))}
             </ul>
             <label className="mt-3 flex items-center gap-2 text-xs font-medium text-ink">
-              <input type="checkbox" className="h-4 w-4 accent-[#3157a4]" {...register('mark_reviewed')} />
+              <input type="checkbox" className="h-4 w-4 accent-[#226192]" {...register('mark_reviewed')} />
               I have checked this record — clear the flags
             </label>
           </div>

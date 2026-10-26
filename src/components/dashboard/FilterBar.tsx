@@ -67,7 +67,7 @@ export function FilterBar({
   const label = 'mb-1 block text-[11px] font-medium uppercase tracking-wide text-muted';
 
   return (
-    <section aria-label="Filters" className={cn('mb-6 rounded-2xl border border-line/70 bg-white p-4 shadow-card', className)}>
+    <section aria-label="Filters" className={cn('mb-6 rounded-2xl border border-line/70 bg-card p-4 shadow-card', className)}>
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 text-sm font-semibold text-navy">
           <Filter className="h-4 w-4" aria-hidden /> Filters

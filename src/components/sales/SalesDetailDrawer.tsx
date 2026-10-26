@@ -142,8 +142,8 @@ export function SalesDetailDrawer({ id, onClose }: { id: string | null; onClose:
 
             {issues.length > 0 && (
               <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
-                <p className="mb-1 text-sm font-medium text-[#7a4a0d]">Data-quality flags</p>
-                <ul className="ml-5 list-disc text-xs text-[#7a4a0d]">
+                <p className="mb-1 text-sm font-medium text-[#6b3f0a]">Data-quality flags</p>
+                <ul className="ml-5 list-disc text-xs text-[#6b3f0a]">
                   {issues.map((i) => (
                     <li key={i}>{DATA_ISSUE_LABELS[i] ?? i}</li>
                   ))}

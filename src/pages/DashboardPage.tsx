@@ -1,8 +1,13 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Activity, Building, ClipboardList, Coins, IndianRupee, Package, Stethoscope, Truck, AlertTriangle } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
+import { Activity, AlertTriangle, Building, CalendarRange, ClipboardList, Coins, Download, FileSpreadsheet, IndianRupee, Package, Pill, RefreshCw, Search, Stethoscope, Truck } from 'lucide-react';
+import { motion, useReducedMotion } from 'motion/react';
 import { FilterBar } from '@/components/dashboard/FilterBar';
-import { KpiCard } from '@/components/dashboard/KpiCard';
+import { AnimatedNumber, KpiCard } from '@/components/dashboard/KpiCard';
+import { useAuth } from '@/auth/AuthProvider';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/form';
 import {
   BreakdownBars,
   ChartCard,
@@ -16,14 +21,16 @@ import {
   useMonthlyInr,
   type BreakdownMetric,
 } from '@/components/dashboard/charts';
-import { PageHeader } from '@/components/ui/card';
 import { ErrorState, StaleBanner } from '@/components/ui/feedback';
-import { useDashboard } from '@/hooks/useData';
+import { useDashboard, useReport, useSyncRuns } from '@/hooks/useData';
+import { exportDashboard } from '@/lib/dashboardExport';
+import { stamp } from '@/lib/export';
+import { supabase } from '@/lib/supabase';
 import { useFilters } from '@/hooks/useFilters';
-import { describeFilters } from '@/lib/filters';
-import { friendlyError } from '@/lib/errors';
-import { CURRENCY_LABEL, CURRENCY_ORDER, formatInrShort, formatMoney, formatMonth, formatNumber } from '@/lib/format';
-import type { CurrencyTotals } from '@/types/database';
+import { describeFilters, toRpcFilters, type SalesFilters } from '@/lib/filters';
+import { friendlyError, notify } from '@/lib/errors';
+import { CURRENCY_LABEL, CURRENCY_ORDER, formatDate, formatDateTime, formatInrShort, formatMoney, formatMonth, formatNumber, relativeTime } from '@/lib/format';
+import type { CurrencyBucket, CurrencyTotals } from '@/types/database';
 
 function CurrencyLines({ rows, field }: { rows: CurrencyTotals[]; field: 'value' | 'shipping' | 'avg_value' }) {
   const sorted = [...rows].sort((a, b) => CURRENCY_ORDER.indexOf(a.currency) - CURRENCY_ORDER.indexOf(b.currency));
@@ -38,7 +45,7 @@ function CurrencyLines({ rows, field }: { rows: CurrencyTotals[]; field: 'value'
               {formatMoney(r[field], 'UNSPECIFIED')} <span className="text-xs font-normal text-muted">(currency not stated)</span>
             </span>
           ) : (
-            formatMoney(r[field], r.currency)
+            <AnimatedNumber value={Number(r[field])} format={(v) => formatMoney(v, r.currency as CurrencyBucket)} />
           )}
         </div>
       ))}
@@ -53,6 +60,99 @@ const BREAKDOWN_OPTIONS: { value: BreakdownMetric; label: string }[] = [
   { value: 'records', label: 'Records' },
 ];
 
+function dateRangeLabel(filters: SalesFilters): string {
+  const r = toRpcFilters(filters);
+  if (filters.month) return formatMonth(filters.month);
+  if (filters.fy) return `${filters.fy} (1 Apr – 31 Mar)`;
+  if (r.date_from || r.date_to) {
+    return `${r.date_from ? formatDate(String(r.date_from)) : 'Start'} – ${r.date_to ? formatDate(String(r.date_to)) : 'Latest'}`;
+  }
+  return 'All dates';
+}
+
+/** Searchable list of every hospital in the current filter (not only the top 10 shown in the chart). */
+function HospitalDetails({ filters }: { filters: SalesFilters }) {
+  const [q, setQ] = useState('');
+  const { data, isLoading, isError, error, refetch } = useReport('hospital', filters);
+  const rows = useMemo(() => {
+    const map = new Map<string, { key: string; records: number; inr: number; value: Partial<Record<CurrencyBucket, number>> }>();
+    for (const r of data ?? []) {
+      const cur = map.get(r.group_key) ?? { key: r.group_key, records: 0, inr: 0, value: {} };
+      cur.records += Number(r.records);
+      cur.inr += Number(r.inr_value);
+      cur.value[r.currency] = (cur.value[r.currency] ?? 0) + Number(r.value);
+      map.set(r.group_key, cur);
+    }
+    return [...map.values()].sort((a, b) => b.inr - a.inr);
+  }, [data]);
+  const term = q.trim().toLowerCase();
+  const visible = term ? rows.filter((r) => r.key.toLowerCase().includes(term)) : rows;
+
+  return (
+    <div className="mt-3 border-t border-line/70 pt-3">
+      <label className="relative block">
+        <span className="sr-only">Search hospitals</span>
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" aria-hidden />
+        <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={`Search ${rows.length || ''} hospitals…`} className="h-9 pl-9" />
+      </label>
+      {isError ? (
+        <p className="mt-3 text-xs text-danger">
+          {friendlyError(error)}{' '}
+          <button type="button" className="font-semibold underline" onClick={() => refetch()}>
+            Retry
+          </button>
+        </p>
+      ) : (
+        <div className="scroll-thin mt-2 max-h-56 overflow-auto rounded-xl border border-line/70">
+          <table className="data-table w-full text-xs">
+            <thead className="sticky top-0 z-10 bg-surface">
+              <tr className="text-left text-muted">
+                <th className="px-3 py-2 font-medium">Hospital</th>
+                <th className="px-3 py-2 text-right font-medium">Records</th>
+                <th className="px-3 py-2 text-right font-medium">Value (per currency)</th>
+                <th className="px-3 py-2 text-right font-medium">INR Value</th>
+              </tr>
+            </thead>
+            <tbody>
+              {isLoading &&
+                [0, 1, 2].map((i) => (
+                  <tr key={i}>
+                    <td colSpan={4} className="px-3 py-2">
+                      <div className="h-4 animate-pulse rounded bg-line/70" />
+                    </td>
+                  </tr>
+                ))}
+              {!isLoading && !visible.length && (
+                <tr>
+                  <td colSpan={4} className="px-3 py-4 text-center text-muted">
+                    {term ? 'No hospital matches your search.' : 'No hospitals in this view.'}
+                  </td>
+                </tr>
+              )}
+              {visible.map((r) => (
+                <tr key={r.key}>
+                  <td className="px-3 py-1.5">
+                    <Link to={`/sales?hospital=${encodeURIComponent(r.key)}`} className="font-medium text-navy hover:text-accent-700 hover:underline">
+                      {r.key}
+                    </Link>
+                  </td>
+                  <td className="tabular px-3 py-1.5 text-right">{formatNumber(r.records)}</td>
+                  <td className="tabular px-3 py-1.5 text-right">
+                    {CURRENCY_ORDER.filter((c) => c !== 'INR' && r.value[c])
+                      .map((c) => formatMoney(r.value[c]!, c, { compact: true }))
+                      .join(' · ') || '—'}
+                  </td>
+                  <td className="tabular px-3 py-1.5 text-right">{formatMoney(r.inr, 'INR')}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function DashboardPage() {
   const { filters, update, reset } = useFilters();
   const { data, isLoading, isError, error, refetch, isFetching } = useDashboard(filters, 10);
@@ -63,6 +163,55 @@ export function DashboardPage() {
   const [contribBy, setContribBy] = useState<'product' | 'manager'>('product');
   const [contribMetric, setContribMetric] = useState<'inr_value' | 'records'>('inr_value');
   const inrMonthly = useMonthlyInr(data?.monthly);
+  const { profile, departmentCode } = useAuth();
+  const runs = useSyncRuns(5);
+  const queryClient = useQueryClient();
+  const reduce = useReducedMotion();
+  const [refreshing, setRefreshing] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const lastRun = runs.data?.find((r) => r.status !== 'running');
+  const firstName = profile?.full_name?.split(' ')[0] ?? profile?.email?.split('@')[0];
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['npp', 'report'] }),
+        queryClient.invalidateQueries({ queryKey: ['npp', 'filter-options'] }),
+        runs.refetch(),
+      ]);
+      const res = await refetch();
+      if (res.isError) throw res.error;
+      notify.success('Dashboard refreshed');
+    } catch (e) {
+      notify.error(friendlyError(e, 'Could not refresh the dashboard.'));
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  const onExport = async () => {
+    if (!data) return;
+    setExporting(true);
+    try {
+      await exportDashboard(data, `npp-dashboard-${stamp()}.xlsx`, [
+        'Ikris Pharma Network — NPP Sales Dashboard report',
+        `Generated ${new Date().toLocaleString('en-IN')}`,
+        `Filters: ${describeFilters(filters).join(' · ')}`,
+        'Values are per currency and never combined; INR Value is the source-reported figure (no conversion applied).',
+      ]);
+      void supabase.rpc('log_client_event', {
+        p_action: 'report.export',
+        p_department_code: 'npp',
+        p_metadata: { report: 'dashboard', format: 'xlsx', filter_keys: Object.keys(filters) },
+      });
+      notify.success('Dashboard report exported');
+    } catch (e) {
+      notify.error(friendlyError(e, 'Export failed.'));
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const t = data?.totals;
   const loading = isLoading && !data;
@@ -70,15 +219,58 @@ export function DashboardPage() {
 
   return (
     <div>
-      <PageHeader
-        title="NPP Sales Dashboard"
-        description={
-          <>
-            Live figures from the sales database. Monetary values are shown in their own currency; INR Value is the
-            figure reported in the source sheet and is never recalculated. {isFetching && !loading && <span className="text-brand">Refreshing…</span>}
-          </>
-        }
-      />
+      <motion.section
+        initial={reduce ? false : { opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+        className="relative mb-6 overflow-hidden rounded-3xl bg-sidebar px-5 py-6 text-white shadow-lift sm:px-7"
+      >
+        <div className="pointer-events-none absolute -right-16 -top-20 h-56 w-56 rounded-full bg-sidebar-light/70 blur-2xl" aria-hidden />
+        <div className="pointer-events-none absolute -bottom-24 right-24 h-48 w-48 rounded-full bg-accent/25 blur-3xl" aria-hidden />
+        <div className="relative flex flex-wrap items-end justify-between gap-5">
+          <div className="min-w-0">
+            <p className="text-sm text-white/75">Welcome back{firstName ? `, ${firstName}` : ''}</p>
+            <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">NPP Sales Dashboard</h1>
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-accent px-2.5 py-1 font-semibold text-accent-ink">
+                <Pill className="h-3.5 w-3.5" aria-hidden /> {departmentCode === 'npp' || !departmentCode ? 'Named Patient Program' : 'NPP'}
+              </span>
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-white/12 px-2.5 py-1 ring-1 ring-inset ring-white/15">
+                <CalendarRange className="h-3.5 w-3.5" aria-hidden /> {dateRangeLabel(filters)}
+              </span>
+              <Link
+                to="/sync"
+                className="inline-flex items-center gap-1.5 rounded-full bg-white/12 px-2.5 py-1 ring-1 ring-inset ring-white/15 transition-colors hover:bg-white/20"
+                title={lastRun ? `Last sync ${formatDateTime(lastRun.finished_at)} — ${lastRun.status}` : 'No sync has run yet'}
+              >
+                <FileSpreadsheet className="h-3.5 w-3.5" aria-hidden />
+                {runs.isLoading ? 'Checking sync…' : lastRun ? `Sheets synced ${relativeTime(lastRun.finished_at)}` : 'Never synced'}
+              </Link>
+              {isFetching && !loading && (
+                <span className="inline-flex items-center gap-1 text-white/80" role="status">
+                  <RefreshCw className="h-3 w-3 animate-spin" aria-hidden /> Updating…
+                </span>
+              )}
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              onClick={onRefresh}
+              loading={refreshing}
+              className="border-white/25 bg-white/10 text-white hover:border-white/40 hover:bg-white/20"
+            >
+              {!refreshing && <RefreshCw className="h-4 w-4" aria-hidden />} Refresh
+            </Button>
+            <Button onClick={onExport} loading={exporting} disabled={!data || empty}>
+              {!exporting && <Download className="h-4 w-4" aria-hidden />} Export report
+            </Button>
+          </div>
+        </div>
+        <p className="relative mt-4 max-w-3xl text-xs text-white/70">
+          Monetary values are shown in their own currency and never combined. INR Value is the figure reported in the source sheet and is never recalculated.
+        </p>
+      </motion.section>
       <FilterBar filters={filters} onChange={update} onReset={reset} />
 
       {isError && data && <StaleBanner message={friendlyError(error)} onRetry={() => refetch()} />}
@@ -89,7 +281,7 @@ export function DashboardPage() {
           {!!t?.needs_review && (
             <Link
               to="/sales?needs_review=true"
-              className="mb-4 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-[#7a4a0d] hover:bg-amber-100"
+              className="mb-4 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-[#6b3f0a] hover:bg-amber-100"
             >
               <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden />
               {t.needs_review} record(s) in this view have data-quality flags from the sheet (e.g. missing date or currency). Review them →
@@ -97,13 +289,15 @@ export function DashboardPage() {
           )}
 
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <KpiCard index={0} loading={loading} icon={Coins} label="Total sales value" value={<CurrencyLines rows={data?.by_currency ?? []} field="value" />} sub="Sheet “Value” column, per currency" />
+            <KpiCard index={0} highlight loading={loading} icon={Coins} label="Total sales value" value={<CurrencyLines rows={data?.by_currency ?? []} field="value" />} sub="Sheet “Value” column, per currency" />
             <KpiCard
               index={1}
               loading={loading}
               icon={IndianRupee}
               label="Total INR value"
-              value={formatInrShort(t?.inr_value)}
+              highlight
+              numeric={t ? Number(t.inr_value) : null}
+              format={formatInrShort}
               sub={`${formatMoney(t?.inr_value, 'INR')} · source-reported`}
             />
             <KpiCard
@@ -111,7 +305,8 @@ export function DashboardPage() {
               loading={loading}
               icon={ClipboardList}
               label="Sales records"
-              value={formatNumber(t?.records)}
+              numeric={t ? Number(t.records) : null}
+              format={(v) => formatNumber(Math.round(v))}
               sub={t?.undated ? `${t.undated} without a date in the sheet` : t?.first_date ? `${t.first_date} → ${t.last_date}` : undefined}
             />
             <KpiCard
@@ -132,8 +327,8 @@ export function DashboardPage() {
             />
             <KpiCard index={4} loading={loading} icon={Truck} label="Shipping charges" value={<CurrencyLines rows={data?.by_currency ?? []} field="shipping" />} sub="Reported separately — not added to sales" />
             <KpiCard index={5} loading={loading} icon={Activity} label="Avg. value per record" value={<CurrencyLines rows={data?.by_currency ?? []} field="avg_value" />} sub="Mean of “Value”, per currency" />
-            <KpiCard index={6} loading={loading} icon={Building} label="Unique hospitals" value={formatNumber(t?.hospitals)} sub="Distinct hospital names" />
-            <KpiCard index={7} loading={loading} icon={Stethoscope} label="Unique doctors" value={formatNumber(t?.doctors)} sub="Distinct names (spelling variants count separately)" />
+            <KpiCard index={6} loading={loading} icon={Building} label="Unique hospitals" numeric={t ? Number(t.hospitals) : null} format={(v) => formatNumber(Math.round(v))} sub="Distinct hospital names" />
+            <KpiCard index={7} loading={loading} icon={Stethoscope} label="Unique doctors" numeric={t ? Number(t.doctors) : null} format={(v) => formatNumber(Math.round(v))} sub="Distinct names (spelling variants count separately)" />
           </div>
 
           <div className="mt-6 grid gap-4 xl:grid-cols-2">
@@ -179,19 +374,20 @@ export function DashboardPage() {
               actions={<MetricSwitch label="Metric" value={managerMetric} onChange={setManagerMetric} options={BREAKDOWN_OPTIONS} />}
               table={data ? breakdownTable(data.by_manager, managerMetric, 'Manager') : undefined}
             >
-              {data && <BreakdownBars rows={data.by_manager} metric={managerMetric} color="#3157a4" />}
+              {data && <BreakdownBars rows={data.by_manager} metric={managerMetric} color="#ef8557" />}
             </ChartCard>
 
             <ChartCard
               title="Hospital-wise sales"
-              description="Top 10 hospitals"
+              description="Top 10 hospitals · search all hospitals below"
+              footer={<HospitalDetails filters={filters} />}
               loading={loading}
               empty={empty}
               height={340}
               actions={<MetricSwitch label="Metric" value={hospitalMetric} onChange={setHospitalMetric} options={BREAKDOWN_OPTIONS} />}
               table={data ? breakdownTable(data.by_hospital, hospitalMetric, 'Hospital') : undefined}
             >
-              {data && <BreakdownBars rows={data.by_hospital} metric={hospitalMetric} />}
+              {data && <BreakdownBars rows={data.by_hospital} metric={hospitalMetric} color="#1f9e86" />}
             </ChartCard>
             <ChartCard
               title="Sales trend"

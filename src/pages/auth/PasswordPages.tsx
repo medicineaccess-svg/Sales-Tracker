@@ -38,7 +38,7 @@ export function ForgotPasswordPage() {
   return (
     <AuthShell title="Reset your password" subtitle="We'll email you a secure link to choose a new password.">
       {sent ? (
-        <div className="rounded-xl border border-line bg-white p-5 text-sm">
+        <div className="rounded-xl border border-line bg-card p-5 text-sm">
           <MailCheck className="mb-2 h-6 w-6 text-success" aria-hidden />
           If an account exists for that address, a reset link is on its way. The link expires after a short time.
         </div>
