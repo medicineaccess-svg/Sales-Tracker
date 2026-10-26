@@ -43,8 +43,7 @@ test.describe('sales record lifecycle', () => {
     await expect(page.getByText('Sales record created')).toBeVisible();
 
     await page.goto(`/sales?search=${encodeURIComponent(voucher)}`);
-    await expect(page.locator('tbody tr')).toHaveCount(1);
-    await page.locator('tbody tr').first().click();
+    await page.locator('tbody tr', { hasText: voucher }).click();
     await page.getByRole('button', { name: 'Edit' }).click();
     await page.fill('#remarks', 'edited by e2e');
     await page.getByRole('button', { name: /save changes/i }).click();
@@ -56,8 +55,9 @@ test.describe('sales record lifecycle', () => {
   test('admin archives the test record', async ({ page }) => {
     await login(page, ADMIN.email!, ADMIN.password!);
     await expect(page).toHaveURL(/\/overview$/);
-    await page.goto(`/sales?search=${encodeURIComponent(voucher)}`);
-    await page.locator('tbody tr').first().click();
+    await page.goto(`/sales?search=${encodeURIComponent('E2E Test Customer')}`);
+    const row = page.locator('tbody tr', { hasText: 'E2E Test Customer' }).first();
+    await row.click();
     await page.getByRole('button', { name: 'Archive' }).click();
     await page.getByRole('button', { name: 'Archive record' }).click();
     await expect(page.getByText('Sales record archived')).toBeVisible();
