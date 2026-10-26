@@ -59,7 +59,7 @@ export function ChartCard({
 }) {
   const [showTable, setShowTable] = useState(false);
   return (
-    <Card className={cn('flex flex-col', className)}>
+    <Card className={cn('flex min-w-0 flex-col', className)}>
       <CardHeader
         title={title}
         description={description}

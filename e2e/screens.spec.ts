@@ -9,7 +9,7 @@ const PAGES = ['/overview', '/dashboard', '/sales', '/sync', '/reports', '/analy
 
 test.describe('visual smoke', () => {
   test.skip(!email || !password, 'admin credentials not provided');
-  test('main pages render without errors', async ({ page }, info) => {
+  test('main pages render without errors', async ({ page, isMobile }, info) => {
     const errors: string[] = [];
     page.on('pageerror', (e) => errors.push(e.message));
     page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
@@ -25,7 +25,9 @@ test.describe('visual smoke', () => {
       await page.screenshot({ path: `test-results/screens/${info.project.name}${path.replace(/\//g, '_')}.png`, fullPage: true });
     }
     await page.goto('/dashboard');
-    await page.getByRole('button', { name: /Department/i }).first().click();
+    // On phones the department switcher lives in the slide-out menu.
+    if (isMobile) await page.getByRole('button', { name: 'Open menu' }).click();
+    await page.getByRole('button', { name: /^Department/i }).first().click();
     await expect(page.getByText('Coming soon').first()).toBeVisible();
     await page.screenshot({ path: `test-results/screens/${info.project.name}_department-selector.png` });
     expect(errors.filter((e) => !/favicon|logo\.png|ERR_BLOCKED|net::/i.test(e))).toEqual([]);
