@@ -40,7 +40,7 @@ Anonymous access is denied.
 ## Not yet tested (needs configuration)
 
 - **Live Google Sheets sync from the app** — requires `GOOGLE_SERVICE_ACCOUNT_JSON` (see `GOOGLE_SHEETS_SYNC.md`).
-  The function correctly reports "not configured" until then. The initial import was done during setup.
+  Until then the function returns a "not configured" error (code path not exercised in the test run). The initial import was done during setup.
 - **Password-reset and invitation emails** — depend on the project's SMTP configuration.
 - **Scheduled sync** — optional pg_cron setup.
 
