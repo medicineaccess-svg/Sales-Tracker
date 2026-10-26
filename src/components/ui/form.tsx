@@ -57,13 +57,12 @@ export function Field({
         {label}
       </Label>
       {children}
-      {error ? (
+      {error && (
         <p role="alert" className="mt-1 text-xs text-danger">
           {error}
         </p>
-      ) : hint ? (
-        <p className="mt-1 text-xs text-muted">{hint}</p>
-      ) : null}
+      )}
+      {hint && <div className="mt-1 text-xs text-muted">{hint}</div>}
     </div>
   );
 }
