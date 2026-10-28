@@ -4,8 +4,9 @@
 
 | Setting | Value |
 |---|---|
-| Spreadsheet | `1yEn6NflVFtU9Bjv4vcRZsqoKTpEeeviGczBUPcLe0Us` |
+| Spreadsheet | `1X1oWDT1p6fyFwVCW9xEPkegOJ4ztBL82ANoCYWdvxq0` ("NPM Sales sheet", since 28 Oct 2026) |
 | Worksheet | gid `631975196` (`Sheet1`) |
+| Previous | `1yEn6NflVFtU9Bjv4vcRZsqoKTpEeeviGczBUPcLe0Us` (v1 layout) — kept as `previous_spreadsheet_id` |
 | Stored in | `departments.config` for `npp` (editable in **Settings → Departments**) |
 
 ## Ownership policy
@@ -20,11 +21,46 @@
 - Rows that disappear from the sheet are **flagged** (`missing_from_source_at`), never deleted. Archive them manually if
   appropriate.
 
+## Sheet layouts
+
+The parser detects the layout from the header row. Only **Date, Particulars, Product Name and INR Value** are required.
+
+| Layout | Columns |
+|---|---|
+| v2 "NPM Sales sheet" (current) | Date, Particulars, Product Name, Place of sale, Ikris Manager Involved, **Zone**, Concerned Doctor name, Hospital Name, Quantity, INR Value |
+| v1 "NPP Sales sheet" | as v2 without Zone, plus Voucher No., Rate, Value, Gross Total, EXPORT SALES, Shipping Charges |
+
+Every parsed row carries `fields` — the database columns the current layout provides. `npp_sync_apply_v2` only writes
+those, so voucher / rate / currency / value captured from the v1 sheet are **kept**, never blanked.
+
+### Switch-over (28 Oct 2026)
+
+The new sheet holds the same 221 sales (₹21,14,88,710) with a Zone column added. The first v2 import **adopted** all
+221 existing records (matched on customer + product + INR value + date) instead of creating duplicates; record IDs,
+audit history and v1-only fields are preserved. Reconciliation: sheet 221 rows / ₹211,488,710.00 = database 221 rows /
+₹211,488,710.00. A second run reported 221 unchanged.
+
+## Ways to import
+
+1. **Google Sheets API** (admin "Import from Google Sheets", or the scheduled run) — needs the
+   `GOOGLE_SERVICE_ACCOUNT_JSON` Edge Function secret and the sheet shared with that service account (Viewer).
+   The new sheet is private, so this is required for live sync.
+2. **Upload CSV** (Sync page, admins) — File → Download → CSV in Google Sheets, then upload. Parsed in the browser,
+   validated and stored by the Edge Function with the admin's JWT; a copy is kept in `npp_sheet_uploads`.
+3. **Staged snapshot** (operators) — a row inserted into `npp_sheet_uploads` with the service role, then
+   `POST /functions/v1/sheets-sync {"upload_id": "…"}`. Upload ids are single-use and expire after 15 minutes.
+
+Every import returns a reconciliation (sheet rows/INR total vs database rows/INR total for that run).
+
 ## Matching & idempotency
 
 - Stable key = normalised **Voucher No.** (upper-case, whitespace collapsed). Spreadsheet row numbers are informational
   only. If a voucher appears twice in the sheet, the second occurrence gets `<voucher>#2` and both are flagged.
-- Rows without a voucher use a content hash of date + particulars + product + quantity.
+- Rows without a voucher (all v2 rows) use `ROW:` + hash of date + particulars + product + manager. Amount and quantity
+  are excluded so a corrected amount updates the record. Exact repeats get `#2` and are flagged `duplicate_row_in_sheet`.
+- Rows with the same date, customer, product and INR value under **different managers** (e.g. HO and an individual) are
+  all flagged `possible_duplicate_attribution` and counted as recorded — never merged automatically.
+- Rows missing from the current sheet are excluded from dashboards and performance figures (`include_missing` filter).
 - Each row's raw cells are hashed; unchanged rows are skipped. Re-running a sync never creates duplicates.
 
 ## Column mapping
@@ -35,7 +71,8 @@
 | Particulars | `particulars` | whitespace collapsed, trailing commas removed |
 | Product Name | `product_name` | whitespace collapsed |
 | Place of sale | `place_of_sale` | |
-| Ikris Manager Involved | `manager` | "HO ( Third Party )", "HO Third Party", "HO ( Third Party Sales )" → `HO (Third Party)` |
+| Ikris Manager Involved | `manager` (+ generated `channel`) | "HO ( Third Party )", "HO Third Party", "HO ( Third Party Sales )" → `HO (Third Party)`. Channel: `individual` / `ho` / `ho_third_party` / `unassigned` |
+| Zone (v2) | `zone` (+ generated `zone_base`) | "HO South Zone" → zone_base "South Zone". Blank zone on a manager/HO row → `zone_not_assigned` flag |
 | Concerned Doctor name | `doctor_name` | |
 | Hospital Name | `hospital_name` | |
 | Voucher No. | `voucher_no`, `source_key` | |
