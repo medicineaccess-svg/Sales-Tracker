@@ -24,6 +24,13 @@ describe('toRpcFilters', () => {
   it('drops empty values and trims text', () => {
     expect(toRpcFilters({ product: '  Kineret ', manager: '', voucher: undefined })).toEqual({ product: 'Kineret' });
   });
+  it('passes zone, channel and manager key filters through', () => {
+    expect(toRpcFilters({ zone: 'South Zone', channel: 'ho', manager_key: 'fazan' })).toEqual({
+      zone: 'South Zone',
+      channel: 'ho',
+      manager_key: 'fazan',
+    });
+  });
   it('passes booleans through', () => {
     expect(toRpcFilters({ needs_review: false, include_archived: true })).toEqual({ needs_review: false, include_archived: true });
   });

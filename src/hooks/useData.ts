@@ -1,6 +1,7 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { toRpcFilters, type SalesFilters } from '@/lib/filters';
+import type { PerformanceData, SalesManager } from '@/lib/performance';
 import type {
   AuditLog,
   DashboardData,
@@ -21,6 +22,9 @@ export const qk = {
   syncRuns: (limit: number) => ['sync-runs', limit] as const,
   audit: (args: object) => ['audit', args] as const,
   settings: ['settings'] as const,
+  performance: (f: object) => ['npp', 'performance', f] as const,
+  managers: ['npp', 'sales-managers'] as const,
+  targets: (fy: number) => ['npp', 'targets', fy] as const,
 };
 
 async function unwrap<T>(p: PromiseLike<{ data: T | null; error: unknown }>): Promise<T> {
@@ -168,6 +172,60 @@ export function useSettings() {
     queryFn: () =>
       unwrap<{ key: string; value: unknown; is_public: boolean; description: string | null; updated_at: string }[]>(
         supabase.from('app_settings').select('key, value, is_public, description, updated_at').order('key'),
+      ),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Performance (targets, managers, monthly facts)
+// ---------------------------------------------------------------------------
+
+/** Monthly facts + targets + master data. Period filters are applied client-side so that
+ *  previous-month growth and FY-to-date figures always have the months they need. */
+export function usePerformance(filters: Pick<SalesFilters, 'product' | 'place' | 'channel' | 'date_from' | 'date_to'> = {}) {
+  const rpc = toRpcFilters(filters);
+  return useQuery({
+    queryKey: qk.performance(rpc),
+    queryFn: () => unwrap<PerformanceData>(supabase.rpc('npp_performance', { p: rpc })),
+    placeholderData: keepPreviousData,
+    staleTime: 60_000,
+  });
+}
+
+export function useSalesManagers() {
+  return useQuery({
+    queryKey: qk.managers,
+    queryFn: () =>
+      unwrap<SalesManager[]>(
+        supabase
+          .from('sales_managers')
+          .select('manager_key, display_name, aliases, employee_id, designation, zone, branch, reporting_manager, is_sales_manager, active')
+          .order('display_name'),
+      ),
+  });
+}
+
+export interface TargetRow {
+  id: string;
+  scope: 'manager' | 'zone' | 'company';
+  scope_key: string;
+  period_month: string;
+  target_inr: number | string;
+  notes: string | null;
+  updated_at: string;
+}
+
+export function useTargets(fyStart: number) {
+  return useQuery({
+    queryKey: qk.targets(fyStart),
+    queryFn: () =>
+      unwrap<TargetRow[]>(
+        supabase
+          .from('sales_targets')
+          .select('id, scope, scope_key, period_month, target_inr, notes, updated_at')
+          .eq('department_code', 'npp')
+          .gte('period_month', `${fyStart}-04-01`)
+          .lte('period_month', `${fyStart + 1}-03-01`),
       ),
   });
 }

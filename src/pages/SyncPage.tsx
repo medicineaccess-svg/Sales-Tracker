@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'motion/react';
-import { CheckCircle2, CircleAlert, ExternalLink, Eye, FileSpreadsheet, Info, Loader2, RefreshCw, XCircle } from 'lucide-react';
+import { CheckCircle2, CircleAlert, ExternalLink, Eye, FileSpreadsheet, Info, Loader2, RefreshCw, Upload, XCircle } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/auth/AuthProvider';
 import { Button } from '@/components/ui/button';
@@ -12,6 +12,7 @@ import { useDepartments, useSyncRuns } from '@/hooks/useData';
 import { edgeFunctionError, friendlyError, notify } from '@/lib/errors';
 import { formatDate, formatDateTime, formatNumber, relativeTime } from '@/lib/format';
 import { supabase } from '@/lib/supabase';
+import { parseCsv } from '@/lib/csv';
 import type { NppSale, SyncRun } from '@/types/database';
 
 const statusTone: Record<SyncRun['status'], 'success' | 'warning' | 'danger' | 'brand'> = {
@@ -20,6 +21,15 @@ const statusTone: Record<SyncRun['status'], 'success' | 'warning' | 'danger' | '
   failed: 'danger',
   running: 'brand',
 };
+
+interface Reconciliation {
+  sheet_inr_total: string;
+  database_inr_total: string;
+  sheet_rows: number;
+  database_rows: number;
+  matches: boolean;
+  note: string | null;
+}
 
 interface DryRun {
   rows_read: number;
@@ -55,15 +65,24 @@ export function SyncPage() {
     },
   });
 
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [upload, setUpload] = useState<{ name: string; values: string[][] } | null>(null);
+  const [reconciliation, setReconciliation] = useState<Reconciliation | null>(null);
+
   const invoke = useMutation({
     mutationFn: async (dryRun: boolean) => {
-      const { data, error } = await supabase.functions.invoke('sheets-sync', { body: { dry_run: dryRun } });
+      const body: Record<string, unknown> = { dry_run: dryRun };
+      if (upload) {
+        body.values = upload.values;
+        body.file_name = upload.name;
+      }
+      const { data, error } = await supabase.functions.invoke('sheets-sync', { body });
       if (error) throw new Error(await edgeFunctionError(error));
       return { dryRun, data };
     },
     onMutate: (dryRun) => {
       setNotConfigured(null);
-      if (!dryRun) notify.info('Google Sheets synchronisation started');
+      if (!dryRun) notify.info(upload ? `Importing ${upload.name}` : 'Google Sheets synchronisation started');
     },
     onSuccess: async ({ dryRun, data }) => {
       if (dryRun) {
@@ -71,8 +90,12 @@ export function SyncPage() {
         return;
       }
       const run = (data as { run: SyncRun }).run;
+      setReconciliation((data as { reconciliation?: Reconciliation }).reconciliation ?? null);
+      setUpload(null);
       if (run.status === 'succeeded') {
-        notify.success(`Sync completed: ${run.inserted} new, ${run.updated} updated, ${run.unchanged} unchanged`);
+        notify.success(
+          `Sync completed: ${run.inserted} new, ${run.updated} updated, ${run.unchanged} unchanged${run.adopted ? `, ${run.adopted} carried over from the previous sheet` : ''}`,
+        );
       } else if (run.status === 'partial') {
         notify.warning(`Sync partially completed: ${run.invalid} row(s) could not be imported`);
       }
@@ -101,11 +124,36 @@ export function SyncPage() {
         actions={
           isAdmin && (
             <>
+              <input
+                ref={fileRef}
+                type="file"
+                accept=".csv,text/csv"
+                className="sr-only"
+                aria-label="Upload the sheet exported as CSV"
+                onChange={async (e) => {
+                  const f = e.target.files?.[0];
+                  e.target.value = '';
+                  if (!f) return;
+                  if (f.size > 5 * 1024 * 1024) return notify.error('CSV is larger than 5 MB.');
+                  try {
+                    const values = parseCsv(await f.text());
+                    if (values.length < 2) return notify.error('The CSV has no data rows.');
+                    setUpload({ name: f.name, values });
+                    setPreview(null);
+                    notify.info(`${f.name}: ${values.length - 1} row(s) ready. Preview or import it.`);
+                  } catch {
+                    notify.error('Could not read that file as CSV.');
+                  }
+                }}
+              />
+              <Button variant="outline" onClick={() => fileRef.current?.click()} disabled={running}>
+                <Upload className="h-4 w-4" /> Upload CSV
+              </Button>
               <Button variant="outline" onClick={() => invoke.mutate(true)} disabled={running} loading={invoke.isPending && invoke.variables === true}>
                 {!(invoke.isPending && invoke.variables) && <Eye className="h-4 w-4" />} Preview
               </Button>
               <Button onClick={() => invoke.mutate(false)} disabled={running} loading={invoke.isPending && invoke.variables === false}>
-                {!(invoke.isPending && invoke.variables === false) && <RefreshCw className="h-4 w-4" />} Import from Google Sheets
+                {!(invoke.isPending && invoke.variables === false) && <RefreshCw className="h-4 w-4" />} {upload ? 'Import uploaded CSV' : 'Import from Google Sheets'}
               </Button>
             </>
           )
@@ -132,13 +180,37 @@ export function SyncPage() {
         )}
       </AnimatePresence>
 
+      {upload && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-brand-100 bg-brand-50 px-4 py-3 text-sm text-navy" role="status">
+          <span>
+            <strong>{upload.name}</strong> — {upload.values.length - 1} row(s) loaded. Preview and Import now use this file instead of reading Google Sheets. The
+            sheet itself is never modified.
+          </span>
+          <Button size="sm" variant="ghost" onClick={() => setUpload(null)}>
+            Use Google Sheets instead
+          </Button>
+        </div>
+      )}
+
+      {reconciliation && (
+        <div
+          role="status"
+          className={`mb-4 rounded-xl border px-4 py-3 text-sm ${reconciliation.matches ? 'border-emerald-200 bg-emerald-50 text-success' : 'border-amber-200 bg-amber-50 text-[#6b3f0a]'}`}
+        >
+          {reconciliation.matches ? <CheckCircle2 className="mr-1 inline h-4 w-4" /> : <CircleAlert className="mr-1 inline h-4 w-4" />}
+          Reconciliation: sheet {formatNumber(reconciliation.sheet_rows)} rows / ₹{formatNumber(Number(reconciliation.sheet_inr_total), 2)} · database{' '}
+          {formatNumber(reconciliation.database_rows)} rows / ₹{formatNumber(Number(reconciliation.database_inr_total), 2)}
+          {reconciliation.matches ? ' — totals match.' : ' — totals differ.'} {reconciliation.note}
+        </div>
+      )}
+
       {notConfigured && (
         <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-[#6b3f0a]">
           <p className="font-medium">Google Sheets access is not configured yet</p>
           <p className="mt-1 text-xs">
             Add a Google service-account key as the Edge Function secret <code>GOOGLE_SERVICE_ACCOUNT_JSON</code> and share the sheet
-            with the service account email as a Viewer. See <code>docs/GOOGLE_SHEETS_SYNC.md</code>. Previously imported data remains
-            available.
+            with the service account email as a Viewer. See <code>docs/GOOGLE_SHEETS_SYNC.md</code>. Until then, download the sheet as CSV
+            (File → Download → Comma-separated values) and use <strong>Upload CSV</strong>. Previously imported data remains available.
           </p>
         </div>
       )}
@@ -161,8 +233,9 @@ export function SyncPage() {
               <p className="mb-1 flex items-center gap-1 font-medium text-ink">
                 <Info className="h-3.5 w-3.5" /> Sync policy
               </p>
-              Sheet rows are matched by voucher number. Changed rows update the CRM unless the record was edited in the CRM — those are held as
-              conflicts for an administrator. Rows removed from the sheet are flagged, never deleted.
+              Sheet rows are matched by a stable key (voucher number when the sheet has one, otherwise date + customer + product + manager).
+              Changed rows update the CRM unless the record was edited in the CRM — those are held as conflicts for an administrator. Columns
+              the sheet does not carry are never blanked. Rows removed from the sheet are flagged, never deleted, and excluded from performance figures.
             </div>
           </CardBody>
         </Card>
@@ -177,7 +250,8 @@ export function SyncPage() {
                 <p className="text-xs text-muted">{formatDateTime(lastOk.finished_at)}</p>
                 <p className="pt-2 text-xs text-muted">
                   {formatNumber(lastOk.rows_read)} rows read · {lastOk.inserted} inserted · {lastOk.updated} updated · {lastOk.unchanged} unchanged ·{' '}
-                  {lastOk.flagged} flagged
+                  {lastOk.adopted ? `${lastOk.adopted} carried over · ` : ''}
+                  {lastOk.flagged} flagged · {lastOk.trigger === 'upload' ? 'from an uploaded snapshot' : `trigger: ${lastOk.trigger}`}
                 </p>
               </div>
             ) : (

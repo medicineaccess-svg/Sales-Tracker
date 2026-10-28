@@ -157,6 +157,7 @@ export function SalesDetailDrawer({ id, onClose }: { id: string | null; onClose:
               <Row label="Product">{r.product_name}</Row>
               <Row label="Place of sale">{r.place_of_sale}</Row>
               <Row label="Manager">{r.manager}</Row>
+              <Row label="Zone">{r.zone}</Row>
               <Row label="Doctor">{r.doctor_name}</Row>
               <Row label="Hospital">{r.hospital_name}</Row>
               <Row label="Voucher no.">{r.voucher_no}</Row>

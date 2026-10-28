@@ -144,3 +144,36 @@
     transform: translateY(0);
   }
 }
+
+/* Printable reports: hide app chrome, keep content on white */
+@media print {
+  aside,
+  header,
+  .no-print,
+  .Toastify {
+    display: none !important;
+  }
+  body {
+    background: #fff !important;
+  }
+  [class*='lg:pl-'] {
+    padding-left: 0 !important;
+  }
+  main {
+    max-width: none !important;
+    padding: 0 !important;
+  }
+  .print-break {
+    break-before: page;
+  }
+  .shadow-card,
+  .shadow-lift {
+    box-shadow: none !important;
+  }
+  table {
+    break-inside: auto;
+  }
+  tr {
+    break-inside: avoid;
+  }
+}

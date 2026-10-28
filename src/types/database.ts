@@ -43,6 +43,9 @@ export interface NppSale {
   product_name: string;
   place_of_sale: string | null;
   manager: string | null;
+  zone?: string | null;
+  zone_base?: string | null;
+  channel?: 'individual' | 'ho' | 'ho_third_party' | 'unassigned';
   doctor_name: string | null;
   hospital_name: string | null;
   voucher_no: string | null;
@@ -71,7 +74,7 @@ export interface NppSale {
 export interface SyncRun {
   id: string;
   department_code: string;
-  trigger: 'initial' | 'manual' | 'scheduled';
+  trigger: 'initial' | 'manual' | 'scheduled' | 'upload';
   status: 'running' | 'succeeded' | 'partial' | 'failed';
   started_at: string;
   finished_at: string | null;
@@ -84,6 +87,7 @@ export interface SyncRun {
   invalid: number;
   flagged: number;
   missing_from_source: number;
+  adopted?: number;
   errors: { row?: number; reason: string }[];
   notes: string | null;
   initiated_by: string | null;
@@ -165,6 +169,7 @@ export interface FilterOptions {
   hospitals: string[];
   doctors: string[];
   places: string[];
+  zones?: string[];
   financial_years: string[];
   currencies: CurrencyBucket[];
 }

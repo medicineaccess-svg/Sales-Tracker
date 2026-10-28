@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   LineChart,
   Settings,
+  Target,
   ShieldCheck,
   User,
   Users,
@@ -24,6 +25,7 @@ export interface NavItem {
 export const NAV_ITEMS: NavItem[] = [
   { label: 'Overview', to: '/overview', icon: LayoutDashboard },
   { label: 'Sales Dashboard', to: '/dashboard', icon: BarChart3 },
+  { label: 'Performance', to: '/performance', icon: Target },
   { label: 'Department', icon: Building2, action: 'departments' },
   { label: 'NPP Sales', to: '/sales', icon: ClipboardList },
   { label: 'Google Sheets Sync', to: '/sync', icon: FileSpreadsheet },
@@ -39,6 +41,7 @@ export const PAGE_TITLES: Record<string, string> = {
   '/overview': 'Overview',
   '/dashboard': 'Sales Dashboard',
   '/departments': 'Departments',
+  '/performance': 'Performance',
   '/sales': 'NPP Sales',
   '/sync': 'Google Sheets Sync',
   '/reports': 'Sales Reports',

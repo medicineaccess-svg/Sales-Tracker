@@ -4,11 +4,17 @@
  * Pure TypeScript with no runtime-specific APIs, so the same file is used by
  * the `sheets-sync` Edge Function (Deno) and by the frontend unit tests (Vitest).
  *
+ * Supports two sheet layouts, detected from the header row:
+ *  - v1 "NPP Sales sheet": Voucher No., Rate, Value, Gross Total, EXPORT SALES, Shipping Charges …
+ *  - v2 "NPM Sales sheet": Zone column; no voucher, rate, value or currency columns.
+ * Only Date, Particulars, Product Name and INR Value are mandatory. Every parsed row lists
+ * the columns the sheet actually provided (`fields`), so the database never blanks out
+ * values the current sheet simply does not carry.
+ *
  * Principles
  *  - Never invent data. Values that cannot be parsed are stored as NULL and the
  *    row is flagged in `data_issues`; the original cell text is kept in `source_raw`.
- *  - Never convert currencies. `value`, `shipping_charges` etc. are stored in the
- *    currency shown in the Rate column; `inr_value` is the sheet's own INR figure.
+ *  - Never convert currencies. `inr_value` is the sheet's own INR figure.
  *  - Subtotal rows ("Total", "toal", rows with only an INR figure) are skipped.
  */
 
@@ -18,6 +24,7 @@ export const NPP_COLUMNS = {
   product_name: 'Product Name',
   place_of_sale: 'Place of sale',
   manager: 'Ikris Manager Involved',
+  zone: 'Zone',
   doctor_name: 'Concerned Doctor name',
   hospital_name: 'Hospital Name',
   voucher_no: 'Voucher No.',
@@ -32,13 +39,39 @@ export const NPP_COLUMNS = {
 
 export type NppColumnKey = keyof typeof NPP_COLUMNS;
 
+export const REQUIRED_COLUMNS: NppColumnKey[] = ['date', 'particulars', 'product_name', 'inr_value'];
+
+/** Database fields written when a given sheet column is present. */
+export const COLUMN_FIELDS: Record<NppColumnKey, string[]> = {
+  date: ['sale_date'],
+  particulars: ['particulars'],
+  product_name: ['product_name'],
+  place_of_sale: ['place_of_sale'],
+  manager: ['manager'],
+  zone: ['zone'],
+  doctor_name: ['doctor_name'],
+  hospital_name: ['hospital_name'],
+  voucher_no: ['voucher_no'],
+  quantity: ['quantity', 'quantity_unit'],
+  rate: ['rate', 'rate_unit', 'currency'],
+  value: ['value'],
+  gross_total: ['gross_total', 'gross_total_dc'],
+  export_sales: ['export_sales', 'export_sales_dc'],
+  shipping_charges: ['shipping_charges', 'shipping_charges_dc'],
+  inr_value: ['inr_value'],
+};
+
 export type Currency = 'USD' | 'EUR' | 'GBP' | 'INR';
 export type DrCr = 'Dr' | 'Cr';
+export type SalesChannel = 'individual' | 'ho' | 'ho_third_party' | 'unassigned';
 
 export type DataIssue =
   | 'missing_date'
   | 'missing_voucher'
   | 'duplicate_voucher_in_sheet'
+  | 'duplicate_row_in_sheet'
+  | 'possible_duplicate_attribution'
+  | 'zone_not_assigned'
   | 'missing_quantity'
   | 'missing_rate'
   | 'currency_not_stated'
@@ -54,6 +87,10 @@ export const DATA_ISSUE_LABELS: Record<DataIssue, string> = {
   missing_date: 'Date missing in sheet',
   missing_voucher: 'Voucher number missing',
   duplicate_voucher_in_sheet: 'Voucher number appears more than once in the sheet',
+  duplicate_row_in_sheet: 'Same date, customer, product and manager appear more than once in the sheet',
+  possible_duplicate_attribution:
+    'Same date, customer, product and INR value recorded under more than one manager — may be one sale counted twice',
+  zone_not_assigned: 'Zone missing for a sales manager row',
   missing_quantity: 'Quantity missing',
   missing_rate: 'Rate missing',
   currency_not_stated: 'Currency not stated (no $ / € symbol in Rate)',
@@ -66,6 +103,19 @@ export const DATA_ISSUE_LABELS: Record<DataIssue, string> = {
   invalid_number: 'A numeric cell could not be read',
 };
 
+/** Issues that describe columns only the v1 sheet carried (kept when a v2 sync adopts an old record). */
+export const LEGACY_COLUMN_ISSUES: DataIssue[] = [
+  'missing_voucher',
+  'duplicate_voucher_in_sheet',
+  'missing_rate',
+  'currency_not_stated',
+  'invalid_value',
+  'value_mismatch',
+  'rate_unit_mismatch',
+  'columns_shifted',
+  'export_sales_mismatch',
+];
+
 export interface ParsedNppRow {
   source_key: string;
   source_sheet_id: string;
@@ -73,11 +123,15 @@ export interface ParsedNppRow {
   source_row_number: number;
   source_hash: string;
   source_raw: Record<string, string>;
+  /** Database fields this sheet layout provides; others are left untouched on update. */
+  fields: string[];
   sale_date: string | null;
   particulars: string;
   product_name: string;
   place_of_sale: string | null;
   manager: string | null;
+  zone: string | null;
+  channel: SalesChannel;
   doctor_name: string | null;
   hospital_name: string | null;
   voucher_no: string | null;
@@ -109,6 +163,10 @@ export interface ParseResult {
   invalid: RowError[];
   flagged: number;
   headerRow: number;
+  /** Sheet columns that were found. */
+  columns: NppColumnKey[];
+  /** Total of the INR Value column across imported rows (for reconciliation). */
+  inrTotal: string;
 }
 
 export class SheetStructureError extends Error {
@@ -279,6 +337,21 @@ function multiply(q: string, r: string): string {
   return `${str.slice(0, -2)}.${str.slice(-2)}`;
 }
 
+
+/** "HO ( Third Party )" → ho_third_party, "HO" → ho, blank → unassigned, anything else → individual. */
+export function channelOf(manager: string | null): SalesChannel {
+  if (!manager) return 'unassigned';
+  if (/^HO\s*\(?\s*third\s*party/i.test(manager)) return 'ho_third_party';
+  if (/^HO$/i.test(manager.trim())) return 'ho';
+  return 'individual';
+}
+
+/** "HO South Zone" → "South Zone"; blank → null. */
+export function zoneBase(zone: string | null | undefined): string | null {
+  const z = collapse(zone).replace(/^HO\s+/i, '');
+  return z === '' ? null : z;
+}
+
 // ---------------------------------------------------------------------------
 // Main entry point
 // ---------------------------------------------------------------------------
@@ -288,34 +361,44 @@ export interface ParseOptions {
   sheetGid?: string | number | null;
 }
 
-export function findHeader(values: string[][]): { rowIndex: number; map: Record<NppColumnKey, number> } {
+export function findHeader(values: string[][]): {
+  rowIndex: number;
+  map: Partial<Record<NppColumnKey, number>>;
+  columns: NppColumnKey[];
+} {
   const wanted = Object.entries(NPP_COLUMNS) as [NppColumnKey, string][];
   for (let i = 0; i < Math.min(values.length, 20); i++) {
     const cells = (values[i] ?? []).map((c) => normHeader(String(c ?? '')));
-    if (!cells.includes('particulars') || !cells.includes('voucherno')) continue;
-    const map = {} as Record<NppColumnKey, number>;
-    const missing: string[] = [];
+    if (!cells.includes('particulars')) continue;
+    const map: Partial<Record<NppColumnKey, number>> = {};
     for (const [key, label] of wanted) {
       const idx = cells.indexOf(normHeader(label));
-      if (idx === -1) missing.push(label);
-      else map[key] = idx;
+      if (idx !== -1) map[key] = idx;
     }
+    const missing = REQUIRED_COLUMNS.filter((k) => map[k] === undefined).map((k) => NPP_COLUMNS[k]);
     if (missing.length) {
       throw new SheetStructureError(
-        `The NPP sheet is missing expected column(s): ${missing.join(', ')}. ` +
+        `The NPP sheet is missing required column(s): ${missing.join(', ')}. ` +
           'Restore the column names or update the mapping before syncing.',
         missing,
       );
     }
-    return { rowIndex: i, map };
+    return { rowIndex: i, map, columns: wanted.map(([k]) => k).filter((k) => map[k] !== undefined) };
   }
-  throw new SheetStructureError(
-    'Could not find the header row (expected columns "Particulars" and "Voucher No.") in the first 20 rows.',
-  );
+  throw new SheetStructureError('Could not find the header row (expected a "Particulars" column) in the first 20 rows.');
 }
 
+const sumCents = (values: (string | null)[]) =>
+  values.reduce((acc, v) => (v ? acc + BigInt(v.replace('.', '')) : acc), 0n);
+const centsToString = (c: bigint) => {
+  const s = c.toString().padStart(3, '0');
+  return `${s.slice(0, -2)}.${s.slice(-2)}`;
+};
+
 export function parseNppSheet(values: string[][], opts: ParseOptions): ParseResult {
-  const { rowIndex, map } = findHeader(values);
+  const { rowIndex, map, columns } = findHeader(values);
+  const has = (k: NppColumnKey) => map[k] !== undefined;
+  const fields = columns.flatMap((c) => COLUMN_FIELDS[c]);
   const rows: ParsedNppRow[] = [];
   const invalid: RowError[] = [];
   let skipped = 0;
@@ -325,9 +408,9 @@ export function parseNppSheet(values: string[][], opts: ParseOptions): ParseResu
   for (let i = rowIndex + 1; i < values.length; i++) {
     const rowNumber = i + 1; // 1-based sheet row
     const cells = values[i] ?? [];
-    const get = (k: NppColumnKey) => String(cells[map[k]] ?? '');
+    const get = (k: NppColumnKey) => (map[k] === undefined ? '' : String(cells[map[k]!] ?? ''));
     const raw: Record<string, string> = {};
-    for (const k of Object.keys(NPP_COLUMNS) as NppColumnKey[]) raw[NPP_COLUMNS[k]] = get(k);
+    for (const k of columns) raw[NPP_COLUMNS[k]] = get(k);
 
     const anyContent = Object.values(raw).some((v) => collapse(v) !== '');
     if (!anyContent) continue; // fully blank row — not counted
@@ -356,21 +439,25 @@ export function parseNppSheet(values: string[][], opts: ParseOptions): ParseResu
     const saleDate = parseSheetDate(get('date'));
     if (!saleDate) issues.add('missing_date');
 
-    const voucher = collapse(get('voucher_no')) || null;
-    if (!voucher) issues.add('missing_voucher');
+    const voucher = has('voucher_no') ? collapse(get('voucher_no')) || null : null;
+    if (has('voucher_no') && !voucher) issues.add('missing_voucher');
 
     const qty = parseQuantity(get('quantity'));
-    if (!qty.ok) issues.add('invalid_number');
-    if (!qty.quantity) issues.add('missing_quantity');
+    if (has('quantity')) {
+      if (!qty.ok) issues.add('invalid_number');
+      if (!qty.quantity) issues.add('missing_quantity');
+    }
 
     const rate = parseRate(get('rate'));
-    if (!rate.ok) issues.add('invalid_number');
-    if (!rate.rate) issues.add('missing_rate');
-    if (!rate.currency) issues.add('currency_not_stated');
-    if (rate.unit && qty.unit && rate.unit !== qty.unit) issues.add('rate_unit_mismatch');
+    if (has('rate')) {
+      if (!rate.ok) issues.add('invalid_number');
+      if (!rate.rate) issues.add('missing_rate');
+      if (!rate.currency) issues.add('currency_not_stated');
+      if (rate.unit && qty.unit && rate.unit !== qty.unit) issues.add('rate_unit_mismatch');
+    }
 
     const value = parseAmount(get('value'));
-    if (!value.ok) issues.add('invalid_value');
+    if (has('value') && !value.ok) issues.add('invalid_value');
 
     const inr = parseAmount(get('inr_value'));
     if (!inr.ok) issues.add('invalid_number');
@@ -381,7 +468,7 @@ export function parseNppSheet(values: string[][], opts: ParseOptions): ParseResu
     let shipping = parseDrCr(get('shipping_charges'));
     if (!gross.ok || !exportSales.ok || !shipping.ok) issues.add('invalid_number');
 
-    // Detect the "shifted by one column" pattern seen in the sheet: Gross Total
+    // Detect the "shifted by one column" pattern seen in the v1 sheet: Gross Total
     // holds the INR figure (no Dr/Cr), Export Sales holds the Dr gross, and
     // Shipping holds the Cr export amount.
     if (
@@ -402,14 +489,23 @@ export function parseNppSheet(values: string[][], opts: ParseOptions): ParseResu
       issues.add('value_mismatch');
     }
 
-    // Stable key: voucher number; fall back to a content hash for rows without one.
+    const manager = normaliseManager(get('manager'));
+    const channel = channelOf(manager);
+    const zone = has('zone') ? collapse(get('zone')) || null : null;
+    if (has('zone') && !zone && (channel === 'individual' || channel === 'ho')) issues.add('zone_not_assigned');
+
+    // Stable key: voucher number when the sheet has one; otherwise date + customer + product + manager.
+    // Amount and quantity are deliberately excluded so that correcting a value updates the record.
     const baseKey = voucher
       ? normaliseVoucherKey(voucher)
-      : 'NOVOUCHER:' + hashString([saleDate, particulars.toLowerCase(), product.toLowerCase(), collapse(get('quantity'))].join('|'));
+      : (has('voucher_no') ? 'NOVOUCHER:' : 'ROW:') +
+        hashString(
+          [saleDate ?? '', particulars.toLowerCase(), product.toLowerCase(), (manager ?? '').toLowerCase()].join('|'),
+        );
     const seen = (keyCounts.get(baseKey) ?? 0) + 1;
     keyCounts.set(baseKey, seen);
     const sourceKey = seen === 1 ? baseKey : `${baseKey}#${seen}`;
-    if (seen > 1 && voucher) issues.add('duplicate_voucher_in_sheet');
+    if (seen > 1) issues.add(voucher ? 'duplicate_voucher_in_sheet' : 'duplicate_row_in_sheet');
 
     rows.push({
       source_key: sourceKey,
@@ -418,11 +514,14 @@ export function parseNppSheet(values: string[][], opts: ParseOptions): ParseResu
       source_row_number: rowNumber,
       source_hash: hashString(JSON.stringify(raw)),
       source_raw: raw,
+      fields,
       sale_date: saleDate,
       particulars,
       product_name: product,
       place_of_sale: orNull(collapse(get('place_of_sale')).replace(/^['"]+|['"]+$/g, '')),
-      manager: normaliseManager(get('manager')),
+      manager,
+      zone,
+      channel,
       doctor_name: orNull(collapse(get('doctor_name'))),
       hospital_name: orNull(collapse(get('hospital_name'))),
       voucher_no: voucher,
@@ -443,11 +542,26 @@ export function parseNppSheet(values: string[][], opts: ParseOptions): ParseResu
     });
   }
 
-  // Mark the first occurrence of a duplicated voucher too
+  // Mark the first occurrence of a duplicated key too
+  const baseOf = (k: string) => k.replace(/#\d+$/, '');
   for (const r of rows) {
-    if (r.voucher_no && (keyCounts.get(normaliseVoucherKey(r.voucher_no)) ?? 0) > 1 &&
-        !r.data_issues.includes('duplicate_voucher_in_sheet')) {
-      r.data_issues.push('duplicate_voucher_in_sheet');
+    if ((keyCounts.get(baseOf(r.source_key)) ?? 0) > 1) {
+      const issue: DataIssue = r.voucher_no ? 'duplicate_voucher_in_sheet' : 'duplicate_row_in_sheet';
+      if (!r.data_issues.includes(issue)) r.data_issues.push(issue);
+    }
+  }
+
+  // Same sale recorded under different managers (e.g. HO and an individual): flag, never merge.
+  const groups = new Map<string, ParsedNppRow[]>();
+  for (const r of rows) {
+    if (!r.sale_date || !r.inr_value) continue;
+    const g = [r.sale_date, r.particulars.toLowerCase(), r.product_name.toLowerCase(), r.inr_value].join('|');
+    groups.set(g, [...(groups.get(g) ?? []), r]);
+  }
+  for (const g of groups.values()) {
+    const managers = new Set(g.map((r) => (r.manager ?? '').toLowerCase()));
+    if (g.length > 1 && managers.size > 1) {
+      for (const r of g) if (!r.data_issues.includes('possible_duplicate_attribution')) r.data_issues.push('possible_duplicate_attribution');
     }
   }
 
@@ -458,5 +572,7 @@ export function parseNppSheet(values: string[][], opts: ParseOptions): ParseResu
     invalid,
     flagged: rows.filter((r) => r.data_issues.length > 0).length,
     headerRow: rowIndex + 1,
+    columns,
+    inrTotal: centsToString(sumCents(rows.map((r) => r.inr_value))),
   };
 }

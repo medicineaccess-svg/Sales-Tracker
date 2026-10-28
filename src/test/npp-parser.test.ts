@@ -10,6 +10,8 @@ import {
   parseRate,
   parseSheetDate,
   SheetStructureError,
+  channelOf,
+  zoneBase,
 } from '@shared/npp-parser';
 
 // Synthetic rows that mirror the structure and quirks of the real NPP sheet.
@@ -167,13 +169,107 @@ describe('parseNppSheet', () => {
     expect(again.rows[0].source_key).toBe(result.rows[0].source_key);
   });
 
-  it('rejects a sheet with renamed or missing columns', () => {
-    const broken = [HEADER.map((h) => (h === 'Voucher No.' ? 'Voucher No.' : h === 'Rate' ? 'Price' : h)), ...SHEET.slice(1)];
+  it('rejects a sheet with a renamed required column', () => {
+    const broken = [HEADER.map((h) => (h.trim() === 'INR Value' ? 'INR Amount' : h)), ...SHEET.slice(1)];
     expect(() => findHeader(broken)).toThrow(SheetStructureError);
     try {
       findHeader(broken);
     } catch (e) {
-      expect((e as SheetStructureError).missingColumns).toEqual(['Rate']);
+      expect((e as SheetStructureError).missingColumns).toEqual(['INR Value']);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// v2 layout ("NPM Sales sheet"): Zone column, no voucher / rate / value columns
+// ---------------------------------------------------------------------------
+const V2_HEADER = ['Date', 'Particulars', 'Product Name', 'Place of sale', 'Ikris Manager Involved', 'Zone', 'Concerned Doctor name', 'Hospital Name', 'Quantity', 'INR Value'];
+const V2: string[][] = [
+  V2_HEADER,
+  ['01-Apr-26', 'Patient A', 'Truqap 200 Mg', 'Delhi', 'Firoz', 'North Zone', 'Dr X', 'Fortis', '1 PACK', '5,82,800'],
+  ['14-Apr-26', 'Patient B', 'Fabhalta', 'Bangalore', 'HO', 'HO South Zone', '', '', '4 PACK', '15,41,600'],
+  ['10-Apr-26', 'Patient C', 'Lysodren', 'Mumbai', 'HO ( Third Party )', '', 'Dr Y', 'Sushrut', ' 5 PACK ', '6,36,000'],
+  ['24-Aug-26', 'Patient D', 'Hernexeos', 'Bangalore', 'Fazan', 'South Zone', '', 'Manipal', '1 PACK', '7,94,300'],
+  // Same sale under HO and an individual → flagged, never merged
+  ['20-Sep-26', 'Patient E', 'Datroway', 'Bangalore', 'HO', 'HO South Zone', '', '', '3 PACK', '7,05,000'],
+  ['20-Sep-26', 'Patient E', 'Datroway', 'Bangalore', 'Fazan', 'South Zone', '', '', '3 PACK', '7,05,000'],
+  // Exact duplicate row (same manager) → second gets #2 and both flagged
+  ['21-Sep-26', 'Patient F', 'Kineret', 'Chennai', 'Iyappan', 'South Zone', '', '', '1 PACK', '1,48,400'],
+  ['21-Sep-26', 'Patient F', 'Kineret', 'Chennai', 'Iyappan', 'South Zone', '', '', '1 PACK', '1,48,400'],
+  ['22-Sep-26', 'Patient G', 'Kineret', 'Chennai', 'Iyappan', '', '', '', '1 PACK', '10,600.00'],
+];
+
+describe('parseNppSheet — v2 layout', () => {
+  const r = parseNppSheet(V2, { spreadsheetId: 'v2', sheetGid: 631975196 });
+  const by = (name: string) => r.rows.filter((x) => x.particulars === name);
+
+  it('accepts the layout without voucher, rate or value columns', () => {
+    expect(r.columns).toContain('zone');
+    expect(r.columns).not.toContain('voucher_no');
+    expect(r.rows).toHaveLength(9);
+    expect(r.invalid).toEqual([]);
+  });
+
+  it('only declares the fields the sheet provides', () => {
+    const f = r.rows[0].fields;
+    expect(f).toEqual(expect.arrayContaining(['sale_date', 'zone', 'manager', 'inr_value', 'quantity']));
+    expect(f).not.toContain('value');
+    expect(f).not.toContain('currency');
+    expect(f).not.toContain('voucher_no');
+  });
+
+  it('does not raise legacy-column flags', () => {
+    expect(by('Patient A')[0].data_issues).toEqual([]);
+  });
+
+  it('derives the sales channel from the manager column', () => {
+    expect(channelOf('Firoz')).toBe('individual');
+    expect(by('Patient B')[0].channel).toBe('ho');
+    expect(by('Patient C')[0].channel).toBe('ho_third_party');
+    expect(by('Patient C')[0].zone).toBeNull();
+    expect(by('Patient C')[0].data_issues).not.toContain('zone_not_assigned');
+    expect(channelOf(null)).toBe('unassigned');
+  });
+
+  it('maps HO zones onto their base zone', () => {
+    expect(zoneBase('HO South Zone')).toBe('South Zone');
+    expect(zoneBase(' South  Zone ')).toBe('South Zone');
+    expect(zoneBase('')).toBeNull();
+  });
+
+  it('parses Indian digit grouping and padded quantities', () => {
+    expect(by('Patient B')[0].inr_value).toBe('1541600.00');
+    expect(by('Patient C')[0].quantity).toBe('5');
+    expect(by('Patient G')[0].inr_value).toBe('10600.00');
+  });
+
+  it('flags the same sale recorded under HO and an individual without merging it', () => {
+    const e = by('Patient E');
+    expect(e).toHaveLength(2);
+    expect(new Set(e.map((x) => x.source_key)).size).toBe(2);
+    expect(e.every((x) => x.data_issues.includes('possible_duplicate_attribution'))).toBe(true);
+    expect(by('Patient D')[0].data_issues).not.toContain('possible_duplicate_attribution');
+  });
+
+  it('keeps exact duplicate rows distinct and flags them', () => {
+    const f = by('Patient F');
+    expect(f.map((x) => x.source_key.endsWith('#2'))).toEqual([false, true]);
+    expect(f.every((x) => x.data_issues.includes('duplicate_row_in_sheet'))).toBe(true);
+  });
+
+  it('flags a missing zone for a sales-manager row', () => {
+    expect(by('Patient G')[0].data_issues).toContain('zone_not_assigned');
+  });
+
+  it('keys rows independently of amount, so a corrected value is an update', () => {
+    const edited = V2.map((row) => [...row]);
+    edited[1][9] = '6,00,000';
+    const again = parseNppSheet(edited, { spreadsheetId: 'v2' });
+    expect(again.rows[0].source_key).toBe(r.rows[0].source_key);
+    expect(again.rows[0].source_hash).not.toBe(r.rows[0].source_hash);
+  });
+
+  it('reports the INR total for reconciliation', () => {
+    expect(r.inrTotal).toBe('5272100.00');
   });
 });
