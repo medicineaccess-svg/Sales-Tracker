@@ -1,95 +1,61 @@
-# Performance, targets and zones
+# Sales performance & drill-down
 
-Pages live under **Performance** (`/performance`): Overview, Managers (profile), Compare, Zones (drill-down),
-Monthly report, Rankings, Targets. All amounts are the sheet's own **INR Value (₹)** — never converted or recalculated.
+Pages under **Sales Performance** (`/performance`): Overview, Drill-down, Monthly report. The Sales Dashboard also
+shows the manager cards. Everything is built only from the columns of the NPM Sales sheet:
 
-## Data model
+`Date · Particulars · Product Name · Place of sale · Ikris Manager Involved · Zone · Concerned Doctor name · Hospital Name · Quantity · INR Value`
 
-| Object | Purpose |
-|---|---|
-| `npp_sales.zone` | Zone exactly as in the sheet ("HO South Zone", "South Zone", blank) |
-| `npp_sales.zone_base` (generated) | HO prefix removed → HO zone sales roll into their zone |
-| `npp_sales.channel` (generated) | `individual` · `ho` · `ho_third_party` · `unassigned`, from "Ikris Manager Involved" |
-| `sales_managers` | Master data: `manager_key` (stable id), display name, **aliases** (e.g. Fazan ← "Faizan"), zone, branch, employee id, designation, reporting manager, `is_sales_manager` (false for HO and HO (Third Party)), active |
-| `sales_targets` | One row per **scope** (`manager` / `zone` / `company`) × key × **calendar month** (`period_month` = 1st of month), `target_inr` |
-| `npp_performance(filters)` | Invoker RPC: monthly facts (month × manager × zone × channel × place), targets, managers, settings, last sync |
+There are no targets, achievement %, status labels or manager master fields in the dashboards (they are not in the
+sheet). Amounts are the sheet's own INR Value — never converted.
 
-RLS: managers and targets are readable by users with NPP access and writable **only by administrators**; every change
-is written to `audit_logs` (`managers.*`, `targets.*`). The browser never receives privileged keys.
+## Hierarchy (from the sheet)
 
-## Formulas (`src/lib/performance.ts`, unit tested)
-
-| Measure | Formula | No target / zero |
-|---|---|---|
-| Achievement % | Actual ÷ Target × 100 | "—" (never 0 % or ∞) |
-| Remaining | max(Target − Actual, 0) | "—" |
-| Variance | Actual − Target | "—" |
-| Growth % | (Current − Previous) ÷ Previous × 100 | "—" when the previous month had no sales |
-
-## Monthly status (one month vs its monthly target only)
-
-| Status | Rule |
-|---|---|
-| Target Not Set | no target (or 0) for that month |
-| Target Exceeded | actual > target |
-| Target Achieved | actual = target |
-| Not Started | future month |
-| No Sales Recorded | target set, no sales yet |
-| Behind Target | completed month below target, or current month below the paced expectation |
-| On Track | current month at/above target × elapsed days ÷ days in month (`targets.pacing = linear`); never "Behind" during the first 3 days |
-
-Annual figures never feed the monthly status. FY target = **sum of the months entered** (the UI shows "n of 12 months
-entered"); FY-to-date target = completed months in full + current month pro-rated. Annual targets are never divided
-equally across months — the Targets page's copy button only repeats a monthly value the admin typed, on request.
-
-## Target hierarchy (no double counting)
-
-- Manager target = its own monthly row.
-- Zone target = explicit zone row; otherwise the **sum of its sales managers' targets** (marked `*`). Zone actuals
-  include HO sales for the zone, so enter an explicit zone target if HO sales should be covered by the target.
-- Company target = explicit company row; otherwise Σ zone targets + targets of managers without a zone.
-  An explicit level always **replaces** the derived one, it is never added to it.
-
-## HO–Bangalore consolidation (configurable)
-
-Setting `reporting.consolidation.branches` (default):
-
-```json
-{ "name": "Bangalore", "zone": "South Zone", "places": ["Bangalore", "Bengaluru"], "channels": ["ho", "individual"] }
+```
+Company
+ └─ Manager (e.g. Firoz)                       = own sales + HO sales credited to the manager
+     ├─ Own sales      "Ikris Manager Involved" = Firoz
+     └─ HO sales       "Ikris Manager Involved" = HO and Zone = "HO North Zone (Firoz)"
+         └─ Zone        North Zone
+             └─ Individual sales (transactions)
+HO (Third Party)                                not credited to any manager (shown separately)
 ```
 
-- **HO Bangalore only** = HO rows with place of sale Bangalore.
-- **Individual managers** = individual managers' rows with place Bangalore (currently Fazan).
-- **Consolidated Bangalore** = the two above. Each sheet row is one record, so nothing is counted twice.
-- Rows that look like one sale recorded under HO *and* a manager (same date, customer, product, INR value) are flagged
-  `possible_duplicate_attribution`; the card warns and lists them for review — they are **not** silently removed.
-- HO (Third Party) rows at Bangalore are shown as "not included".
-- Other branches: add another object to the array (Settings → app_settings); no code change.
+* `npp_sales.credited_manager` (generated): the manager name for own rows, the name in brackets for HO rows,
+  NULL for HO (Third Party).
+* `npp_sales.zone_base` (generated): "HO North Zone (Firoz)" → "North Zone".
+* The sheet has **no BD Person or separate HO Name column**, so the lowest level is the individual sale and
+  "Total number of BD persons" cannot be shown. Add a BD Person column to the sheet to enable that level.
 
-Current data: no possible-duplicate rows exist; Bangalore FY 2026-27 to date = HO + Fazan as recorded.
+## Consolidation (no double counting) — `src/lib/salesHierarchy.ts`, unit tested
 
-## Rankings & matrix
+Every sheet row lands in exactly one leaf, so:
 
-Only managers **with a target** are ranked (achievement %, then actual; ties share a rank). Managers without a target
-are listed below as "Not ranked" so high sales without a target cannot top the list. HO / HO (Third Party) are company
-channels and are not ranked. Matrix categories use an icon + label (never colour alone): Achieving & growing ·
-Achieving, sales down · Below target, sales up · Below target & sales down · Target not set.
+* Zone total = Σ its sales · HO / Own total = Σ its zones · Manager total = own + HO
+* Company total = Σ managers + HO (Third Party) + any HO row without a manager name
 
-## Forecast
+Current sheet (FY 2026-27, Apr–Sep): Firoz ₹7.90 Cr · Mandar ₹2.87 Cr · Iyappan ₹2.52 Cr · Yatharth ₹1.81 Cr ·
+Mujeeb ₹1.71 Cr · Fazan ₹1.17 Cr · HO (Third Party) ₹3.17 Cr = company ₹21.15 Cr (matches the sheet total).
 
-Labelled **run-rate projection** only: current month = actual ÷ elapsed share; FY = actual of completed months +
-their average × remaining months. No previous-FY data exists yet, so the previous-year comparison column stays hidden.
+## Month-wise figures
 
-## Branch
+Charts run April → March (financial year). Average, highest and lowest month count months up to the latest month
+that has any sales in the sheet, so months that have not happened yet never count as zero. Growth % =
+(month − previous month) ÷ previous month; "—" when the previous month had no sales.
 
-The sheet has no Branch column. "Branch" filters and drill-downs use **Place of sale**; `sales_managers.branch` can
-record a manager's home branch.
+## Filters
 
-## Outstanding configuration
+Financial Year · Month · Manager · HO (own sales / HO sales / HO Third Party) · Zone. All cards, charts and totals
+update together; filters are kept in the URL so views can be shared. Clicking a month bar filters that month.
 
-1. **Monthly targets** — none were provided, so every status is "Target Not Set". Enter them on Performance → Targets
-   (admin), per manager (and optionally zone/company).
-2. **Live Google sync** — the new sheet is private: add `GOOGLE_SERVICE_ACCOUNT_JSON` and share the sheet with that
-   service account as Viewer, or use **Upload CSV** on the Sync page.
-3. **Manager master data** — branch, employee id, designation and reporting manager are not in the sheet.
-4. Optional: `SYNC_CRON_SECRET` + pg_cron schedule for automatic sync once (2) is done.
+## Drill-down
+
+Company → Manager → Own / HO → Zone → individual sales, with a breadcrumb and a **Back** button at every level.
+Each level shows its total, share of the parent, KPI cards (total, average, highest, lowest month), a month-wise bar
+chart, a trend line and a growth row. Individual sales come straight from the database (RLS applies) and export to
+CSV / Excel with the sheet's column names.
+
+## Data notes
+
+* Targets tables (`sales_targets`, `sales_managers`) are kept in the database but no longer used by any screen.
+* Fields carried over from the previous sheet layout (voucher, rate, value, shipping) are kept on old records but are
+  no longer displayed, exported or editable.
