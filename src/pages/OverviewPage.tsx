@@ -55,16 +55,10 @@ export function OverviewPage() {
             index={2}
             loading={isLoading}
             icon={Pill}
-            label="Sales value"
-            value={
-              <span className="text-lg leading-snug">
-                {(data?.by_currency ?? [])
-                  .filter((c) => c.currency !== 'UNSPECIFIED')
-                  .map((c) => formatMoney(c.value, c.currency, { compact: true }))
-                  .join(' · ') || '—'}
-              </span>
-            }
-            sub="Per currency, never combined"
+            label={`Products · ${fy}`}
+            numeric={data ? Number(data.totals.products) : null}
+            format={(v) => formatNumber(Math.round(v))}
+            sub="Distinct product names in the sheet"
           />
           <KpiCard
             index={3}
@@ -147,8 +141,8 @@ export function OverviewPage() {
                 <th className="px-5 py-2.5 font-medium">Product</th>
                 <th className="px-5 py-2.5 font-medium">Hospital</th>
                 <th className="px-5 py-2.5 font-medium">Manager</th>
-                <th className="px-5 py-2.5 text-right font-medium">Value</th>
-                <th className="px-5 py-2.5 text-right font-medium">INR value</th>
+                <th className="px-5 py-2.5 font-medium">Zone</th>
+                <th className="px-5 py-2.5 text-right font-medium">INR Value</th>
               </tr>
             </thead>
             <tbody>
@@ -166,7 +160,7 @@ export function OverviewPage() {
                   <td className="px-5 py-2.5">{r.product_name}</td>
                   <td className="px-5 py-2.5 text-muted">{r.hospital_name ?? '—'}</td>
                   <td className="px-5 py-2.5 text-muted">{r.manager ?? '—'}</td>
-                  <td className="tabular whitespace-nowrap px-5 py-2.5 text-right">{formatMoney(r.value, r.currency ?? 'UNSPECIFIED')}</td>
+                  <td className="px-5 py-2.5 text-muted">{r.zone ?? '—'}</td>
                   <td className="tabular whitespace-nowrap px-5 py-2.5 text-right">{formatMoney(r.inr_value, 'INR')}</td>
                 </tr>
               ))}

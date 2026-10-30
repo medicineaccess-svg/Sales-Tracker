@@ -17,14 +17,12 @@ import { useDashboard } from '@/hooks/useData';
 import { useFilters } from '@/hooks/useFilters';
 import { toRpcFilters } from '@/lib/filters';
 import { friendlyError } from '@/lib/errors';
-import { CURRENCY_LABEL, formatMoney, formatNumber } from '@/lib/format';
+import { formatMoney, formatNumber } from '@/lib/format';
 import { supabase } from '@/lib/supabase';
 import { DATA_ISSUE_LABELS, type DataIssue } from '@shared/npp-parser';
 
 const OPTIONS: { value: BreakdownMetric; label: string }[] = [
   { value: 'inr_value', label: 'INR' },
-  { value: 'value_usd', label: 'USD' },
-  { value: 'value_eur', label: 'EUR' },
   { value: 'records', label: 'Records' },
 ];
 
@@ -94,20 +92,16 @@ export function AnalyticsPage() {
               )}
             </Card>
             <Card className="p-5">
-              <p className="text-xs font-medium uppercase tracking-wide text-muted">Currency mix (records)</p>
+              <p className="text-xs font-medium uppercase tracking-wide text-muted">Unique hospitals / doctors</p>
               {loading ? (
                 <Skeleton className="mt-2 h-10" />
               ) : (
-                <ul className="mt-2 space-y-1 text-sm">
-                  {data?.by_currency.map((c) => (
-                    <li key={c.currency} className="flex justify-between">
-                      <span>{CURRENCY_LABEL[c.currency]}</span>
-                      <span className="tabular text-muted">
-                        {formatNumber(c.records)} ({((c.records / Math.max(1, data.totals.records)) * 100).toFixed(0)}%)
-                      </span>
-                    </li>
-                  ))}
-                </ul>
+                <>
+                  <p className="tabular mt-1 text-2xl font-bold text-navy">
+                    {formatNumber(data?.totals.hospitals)} / {formatNumber(data?.totals.doctors)}
+                  </p>
+                  <p className="text-xs text-muted">Distinct names in the sheet</p>
+                </>
               )}
             </Card>
           </div>

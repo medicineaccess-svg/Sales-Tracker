@@ -29,19 +29,15 @@ interface Column {
 
 const COLUMNS: Column[] = [
   { id: 'date', label: 'Date', sort: 'sale_date', render: (r) => (r.sale_date ? formatDate(r.sale_date) : <span className="text-[#8a5410]">No date</span>), defaultVisible: true },
-  { id: 'voucher', label: 'Voucher', render: (r) => <span className="font-mono text-[11px]">{r.voucher_no ?? '—'}</span>, defaultVisible: true },
   { id: 'particulars', label: 'Particulars', render: (r) => r.particulars, defaultVisible: true },
   { id: 'product', label: 'Product', sort: 'product_name', render: (r) => r.product_name, defaultVisible: true },
-  { id: 'place', label: 'Place', render: (r) => r.place_of_sale ?? '—' },
-  { id: 'manager', label: 'Manager', sort: 'manager', render: (r) => r.manager ?? '—', defaultVisible: true },
+  { id: 'place', label: 'Place of sale', render: (r) => r.place_of_sale ?? '—', defaultVisible: true },
+  { id: 'manager', label: 'Ikris Manager Involved', sort: 'manager', render: (r) => r.manager ?? '—', defaultVisible: true },
   { id: 'zone', label: 'Zone', render: (r) => r.zone ?? '—', defaultVisible: true },
-  { id: 'doctor', label: 'Doctor', render: (r) => r.doctor_name ?? '—' },
+  { id: 'doctor', label: 'Concerned Doctor', render: (r) => r.doctor_name ?? '—', defaultVisible: true },
   { id: 'hospital', label: 'Hospital', sort: 'hospital_name', render: (r) => r.hospital_name ?? '—', defaultVisible: true },
-  { id: 'quantity', label: 'Qty', sort: 'quantity', align: 'right', render: (r) => (r.quantity !== null ? `${formatNumber(r.quantity, 3)} ${r.quantity_unit ?? ''}` : '—'), defaultVisible: true },
-  { id: 'rate', label: 'Rate', align: 'right', render: (r) => formatMoney(r.rate, r.currency ?? 'UNSPECIFIED') },
-  { id: 'value', label: 'Value', sort: 'value', align: 'right', render: (r) => formatMoney(r.value, r.currency ?? 'UNSPECIFIED'), defaultVisible: true },
-  { id: 'shipping', label: 'Shipping', align: 'right', render: (r) => formatMoney(r.shipping_charges, r.currency ?? 'UNSPECIFIED') },
-  { id: 'inr', label: 'INR value', sort: 'inr_value', align: 'right', render: (r) => formatMoney(r.inr_value, 'INR'), defaultVisible: true },
+  { id: 'quantity', label: 'Quantity', sort: 'quantity', align: 'right', render: (r) => (r.quantity !== null ? `${formatNumber(r.quantity, 3)} ${r.quantity_unit ?? ''}` : '—'), defaultVisible: true },
+  { id: 'inr', label: 'INR Value', sort: 'inr_value', align: 'right', render: (r) => formatMoney(r.inr_value, 'INR'), defaultVisible: true },
 ];
 
 const COLS_KEY = 'ikris.sales.columns';
@@ -55,21 +51,8 @@ const EXPORT_COLUMNS: ExportColumn<NppSale>[] = [
   { header: 'Zone', value: (r) => r.zone ?? null },
   { header: 'Concerned Doctor name', value: (r) => r.doctor_name, width: 24 },
   { header: 'Hospital Name', value: (r) => r.hospital_name, width: 28 },
-  { header: 'Voucher No.', value: (r) => r.voucher_no, width: 20 },
-  { header: 'Quantity', value: (r) => toNumber(r.quantity), numFmt: '#,##0.###' },
-  { header: 'Unit', value: (r) => r.quantity_unit },
-  { header: 'Currency', value: (r) => r.currency ?? 'Not stated' },
-  { header: 'Rate', value: (r) => toNumber(r.rate), numFmt: '#,##0.00' },
-  { header: 'Value', value: (r) => toNumber(r.value), numFmt: '#,##0.00' },
-  { header: 'Gross Total', value: (r) => toNumber(r.gross_total), numFmt: '#,##0.00' },
-  { header: 'Gross Dr/Cr', value: (r) => r.gross_total_dc },
-  { header: 'Export Sales', value: (r) => toNumber(r.export_sales), numFmt: '#,##0.00' },
-  { header: 'Export Dr/Cr', value: (r) => r.export_sales_dc },
-  { header: 'Shipping Charges', value: (r) => toNumber(r.shipping_charges), numFmt: '#,##0.00' },
+  { header: 'Quantity', value: (r) => (r.quantity !== null ? `${toNumber(r.quantity)} ${r.quantity_unit ?? ''}`.trim() : null) },
   { header: 'INR Value', value: (r) => toNumber(r.inr_value), numFmt: '#,##0' },
-  { header: 'Source', value: (r) => (r.source === 'google_sheets' ? 'Google Sheets' : 'CRM') },
-  { header: 'Data issues', value: (r) => r.data_issues.join('; '), width: 30 },
-  { header: 'Status', value: (r) => r.status },
 ];
 
 export function SalesPage() {
@@ -132,7 +115,7 @@ export function SalesPage() {
         'Ikris Pharma Network — NPP sales export',
         `Generated ${new Date().toLocaleString('en-IN')}`,
         `Filters: ${describeFilters(filters).join(' · ')}`,
-        'Values are in the currency shown per row; INR Value is source-reported.',
+        'Columns as in the sheet. INR Value is the figure in the sheet.',
       ];
       const name = `npp-sales-${stamp()}.${kind}`;
       if (kind === 'csv') downloadCsv(name, rows, EXPORT_COLUMNS, preamble);
@@ -187,7 +170,7 @@ export function SalesPage() {
           setSearch('');
           reset();
         }}
-        fields={['fy', 'month', 'dates', 'product', 'manager', 'hospital', 'doctor', 'place', 'voucher', 'currency', 'review']}
+        fields={['fy', 'month', 'dates', 'product', 'manager', 'hospital', 'doctor', 'place', 'review']}
       />
 
       {isError && data && <StaleBanner message={friendlyError(error)} onRetry={() => refetch()} />}
@@ -197,7 +180,7 @@ export function SalesPage() {
           <label className="relative min-w-56 flex-1">
             <span className="sr-only">Search sales</span>
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" aria-hidden />
-            <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search particulars, product, doctor, hospital, manager, voucher…" className="h-9 pl-9" />
+            <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search particulars, product, doctor, hospital, manager, zone…" className="h-9 pl-9" />
           </label>
           <label className="flex items-center gap-2 text-xs text-muted">
             <input

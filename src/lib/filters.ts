@@ -16,6 +16,8 @@ export interface SalesFilters {
   channel?: 'individual' | 'ho' | 'ho_third_party' | 'unassigned';
   /** Master-data manager key (aliases resolved), used by performance drill-downs */
   manager_key?: string;
+  /** Credited manager key: own sales + HO sales named for the manager (drill-down links) */
+  owner?: string;
   voucher?: string;
   search?: string;
   currency?: CurrencyBucket;
@@ -25,7 +27,7 @@ export interface SalesFilters {
 
 export const FILTER_KEYS: (keyof SalesFilters)[] = [
   'fy', 'month', 'date_from', 'date_to', 'product', 'manager', 'hospital', 'doctor', 'place',
-  'zone', 'channel', 'manager_key', 'voucher', 'search', 'currency', 'needs_review', 'include_archived',
+  'zone', 'channel', 'manager_key', 'owner', 'voucher', 'search', 'currency', 'needs_review', 'include_archived',
 ];
 
 /** "FY 2026-27" → { from: 2026-04-01, to: 2027-03-31 } (Indian financial year). */
@@ -72,7 +74,7 @@ export function toRpcFilters(f: SalesFilters): Record<string, string | boolean> 
   const out: Record<string, string | boolean> = {};
   if (from) out.date_from = from;
   if (to) out.date_to = to;
-  for (const k of ['product', 'manager', 'hospital', 'doctor', 'place', 'zone', 'channel', 'manager_key', 'voucher', 'search', 'currency'] as const) {
+  for (const k of ['product', 'manager', 'hospital', 'doctor', 'place', 'zone', 'channel', 'manager_key', 'owner', 'voucher', 'search', 'currency'] as const) {
     const v = f[k]?.toString().trim();
     if (v) out[k] = v;
   }
@@ -94,7 +96,7 @@ export function describeFilters(f: SalesFilters): string[] {
   if (f.month) out.push(`Month: ${f.month}`);
   const labels: [keyof SalesFilters, string][] = [
     ['product', 'Product'], ['manager', 'Manager'], ['hospital', 'Hospital'], ['doctor', 'Doctor'],
-    ['place', 'Place'], ['zone', 'Zone'], ['channel', 'Channel'], ['manager_key', 'Manager'], ['voucher', 'Voucher'], ['search', 'Search'], ['currency', 'Currency'],
+    ['place', 'Place'], ['zone', 'Zone'], ['channel', 'Channel'], ['manager_key', 'Manager'], ['owner', 'Manager (own + HO)'], ['voucher', 'Voucher'], ['search', 'Search'], ['currency', 'Currency'],
   ];
   for (const [k, label] of labels) if (f[k]) out.push(`${label}: ${f[k]}`);
   if (f.needs_review === true) out.push('Only records needing review');

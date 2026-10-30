@@ -11,7 +11,6 @@ import { friendlyError, notify } from '@/lib/errors';
 import { formatDate, formatDateTime, formatMoney, formatNumber } from '@/lib/format';
 import { supabase } from '@/lib/supabase';
 import { DATA_ISSUE_LABELS, type DataIssue } from '@shared/npp-parser';
-import type { NppSale } from '@/types/database';
 import { SalesFormDialog } from './SalesFormDialog';
 
 function Row({ label, children }: { label: string; children: ReactNode }) {
@@ -23,8 +22,6 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-const dc = (amount: unknown, side: string | null, cur: NppSale['currency']) =>
-  amount === null || amount === undefined ? '—' : `${formatMoney(amount as number, cur ?? 'UNSPECIFIED')}${side ? ` ${side}` : ''}`;
 
 export function SalesDetailDrawer({ id, onClose }: { id: string | null; onClose: () => void }) {
   const { isAdmin } = useAuth();
@@ -65,7 +62,6 @@ export function SalesDetailDrawer({ id, onClose }: { id: string | null; onClose:
     onError: (e) => notify.error(friendlyError(e)),
   });
 
-  const cur = r?.currency ?? 'UNSPECIFIED';
   const issues = (r?.data_issues ?? []) as DataIssue[];
 
   return (
@@ -75,7 +71,7 @@ export function SalesDetailDrawer({ id, onClose }: { id: string | null; onClose:
         onOpenChange={(o) => !o && onClose()}
         variant="right"
         size="lg"
-        title={r ? `Voucher ${r.voucher_no ?? '—'}` : 'Sales record'}
+        title={r ? `${r.product_name} · ${formatDate(r.sale_date)}` : 'Sales record'}
         description={r ? `${r.product_name} · ${formatDate(r.sale_date)}` : undefined}
         footer={
           r && (
@@ -156,18 +152,12 @@ export function SalesDetailDrawer({ id, onClose }: { id: string | null; onClose:
               <Row label="Particulars">{r.particulars}</Row>
               <Row label="Product">{r.product_name}</Row>
               <Row label="Place of sale">{r.place_of_sale}</Row>
-              <Row label="Manager">{r.manager}</Row>
+              <Row label="Ikris Manager Involved">{r.manager}</Row>
               <Row label="Zone">{r.zone}</Row>
-              <Row label="Doctor">{r.doctor_name}</Row>
-              <Row label="Hospital">{r.hospital_name}</Row>
-              <Row label="Voucher no.">{r.voucher_no}</Row>
+              <Row label="Concerned Doctor">{r.doctor_name}</Row>
+              <Row label="Hospital Name">{r.hospital_name}</Row>
               <Row label="Quantity">{r.quantity !== null ? `${formatNumber(r.quantity, 3)} ${r.quantity_unit ?? ''}` : '—'}</Row>
-              <Row label="Rate">{r.rate !== null ? `${formatMoney(r.rate, cur)}${r.rate_unit ? ` / ${r.rate_unit}` : ''}` : '—'}</Row>
-              <Row label="Value">{formatMoney(r.value, cur)}</Row>
-              <Row label="Gross total">{dc(r.gross_total, r.gross_total_dc, r.currency)}</Row>
-              <Row label="Export sales">{dc(r.export_sales, r.export_sales_dc, r.currency)}</Row>
-              <Row label="Shipping charges">{dc(r.shipping_charges, r.shipping_charges_dc, r.currency)}</Row>
-              <Row label="INR value">{formatMoney(r.inr_value, 'INR')}</Row>
+              <Row label="INR Value">{formatMoney(r.inr_value, 'INR')}</Row>
               {r.remarks && <Row label="Remarks">{r.remarks}</Row>}
               <Row label="Created">{formatDateTime(r.created_at)}</Row>
               <Row label="Last updated">{formatDateTime(r.updated_at)}</Row>

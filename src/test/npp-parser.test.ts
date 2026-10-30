@@ -11,6 +11,7 @@ import {
   parseSheetDate,
   SheetStructureError,
   channelOf,
+  creditedManager,
   zoneBase,
 } from '@shared/npp-parser';
 
@@ -233,8 +234,18 @@ describe('parseNppSheet — v2 layout', () => {
 
   it('maps HO zones onto their base zone', () => {
     expect(zoneBase('HO South Zone')).toBe('South Zone');
+    expect(zoneBase('HO North Zone (Firoz)')).toBe('North Zone');
+    expect(zoneBase('HO South Zone(Iyappan)')).toBe('South Zone');
     expect(zoneBase(' South  Zone ')).toBe('South Zone');
     expect(zoneBase('')).toBeNull();
+  });
+
+  it('credits HO rows to the manager named in the Zone cell', () => {
+    expect(creditedManager('HO', 'HO North Zone (Firoz)')).toBe('Firoz');
+    expect(creditedManager('HO', 'HO South Zone(Iyappan)')).toBe('Iyappan');
+    expect(creditedManager('HO', 'HO South Zone')).toBeNull();
+    expect(creditedManager('Fazan', 'South Zone')).toBe('Fazan');
+    expect(creditedManager('HO (Third Party)', '')).toBeNull();
   });
 
   it('parses Indian digit grouping and padded quantities', () => {

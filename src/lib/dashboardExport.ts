@@ -1,64 +1,41 @@
-// Exports the dashboard exactly as currently filtered: totals per currency, monthly figures and
-// the product / manager / hospital breakdowns. Uses the data already returned by npp_dashboard —
-// nothing is recalculated or converted between currencies.
+// Exports the dashboard exactly as currently filtered, using only the sheet's own figures:
+// INR Value, records and quantity. Uses the data already returned by npp_dashboard.
 import type { DashboardData, GroupTotals } from '@/types/database';
-import { CURRENCY_LABEL, CURRENCY_ORDER, formatMonth } from './format';
+import { formatMonth } from './format';
 import { downloadXlsx, type ExportColumn } from './export';
 
 export interface DashboardExportRow {
   section: string;
   item: string;
-  currency: string;
   records: number | null;
-  value: number | null;
-  shipping: number | null;
   inr: number | null;
+  note?: string;
 }
 
 const n = (v: unknown) => (v === null || v === undefined ? null : Number(v));
 
-function groupRows(section: string, rows: GroupTotals[]): DashboardExportRow[] {
-  const out: DashboardExportRow[] = [];
-  for (const r of rows) {
-    out.push({ section, item: r.key, currency: 'All (INR Value as reported)', records: n(r.records), value: null, shipping: null, inr: n(r.inr_value) });
-    if (Number(r.value_usd)) out.push({ section, item: r.key, currency: 'USD', records: null, value: n(r.value_usd), shipping: null, inr: null });
-    if (Number(r.value_eur)) out.push({ section, item: r.key, currency: 'EUR', records: null, value: n(r.value_eur), shipping: null, inr: null });
-    if (Number(r.value_unspecified))
-      out.push({ section, item: r.key, currency: 'Currency not stated', records: null, value: n(r.value_unspecified), shipping: null, inr: null });
-  }
-  return out;
-}
+const groupRows = (section: string, rows: GroupTotals[]): DashboardExportRow[] =>
+  rows.map((r) => ({ section, item: r.key, records: n(r.records), inr: n(r.inr_value) }));
 
 export function buildDashboardRows(data: DashboardData): DashboardExportRow[] {
   const rows: DashboardExportRow[] = [];
   const t = data.totals;
-  rows.push({ section: 'Summary', item: 'All records in view', currency: 'All (INR Value as reported)', records: n(t.records), value: null, shipping: null, inr: n(t.inr_value) });
-  for (const c of [...data.by_currency].sort((a, b) => CURRENCY_ORDER.indexOf(a.currency) - CURRENCY_ORDER.indexOf(b.currency))) {
-    rows.push({
-      section: 'Totals by currency',
-      item: 'Sales value',
-      currency: CURRENCY_LABEL[c.currency],
-      records: n(c.records),
-      value: n(c.value),
-      shipping: n(c.shipping),
-      inr: n(c.inr_value),
-    });
-  }
-  rows.push({ section: 'Summary', item: 'Unique hospitals', currency: '', records: n(t.hospitals), value: null, shipping: null, inr: null });
-  rows.push({ section: 'Summary', item: 'Unique doctors', currency: '', records: n(t.doctors), value: null, shipping: null, inr: null });
+  rows.push({ section: 'Summary', item: 'All records in view', records: n(t.records), inr: n(t.inr_value) });
+  rows.push({ section: 'Summary', item: 'Unique hospitals', records: n(t.hospitals), inr: null });
+  rows.push({ section: 'Summary', item: 'Unique doctors', records: n(t.doctors), inr: null });
   for (const q of data.quantity_by_unit) {
-    rows.push({ section: 'Quantity', item: `Quantity (${q.unit})`, currency: '', records: n(q.records), value: n(q.quantity), shipping: null, inr: null });
+    rows.push({ section: 'Quantity', item: `Quantity (${q.unit})`, records: n(q.records), inr: null, note: String(n(q.quantity)) });
   }
-  for (const m of [...data.monthly].sort((a, b) => a.month.localeCompare(b.month) || CURRENCY_ORDER.indexOf(a.currency) - CURRENCY_ORDER.indexOf(b.currency))) {
-    rows.push({
-      section: 'Monthly',
-      item: formatMonth(m.month),
-      currency: CURRENCY_LABEL[m.currency],
-      records: n(m.records),
-      value: n(m.value),
-      shipping: n(m.shipping),
-      inr: n(m.inr_value),
-    });
+  // Monthly rows arrive split by a legacy currency bucket — merge them into one INR figure per month
+  const monthly = new Map<string, { records: number; inr: number }>();
+  for (const m of data.monthly) {
+    const cur = monthly.get(m.month) ?? { records: 0, inr: 0 };
+    cur.records += Number(m.records);
+    cur.inr += Number(m.inr_value);
+    monthly.set(m.month, cur);
+  }
+  for (const [month, v] of [...monthly.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+    rows.push({ section: 'Monthly', item: formatMonth(month), records: v.records, inr: v.inr });
   }
   rows.push(...groupRows('Top products', data.by_product));
   rows.push(...groupRows('Top managers', data.by_manager));
@@ -69,11 +46,9 @@ export function buildDashboardRows(data: DashboardData): DashboardExportRow[] {
 export const DASHBOARD_EXPORT_COLUMNS: ExportColumn<DashboardExportRow>[] = [
   { header: 'Section', value: (r) => r.section, width: 20 },
   { header: 'Item', value: (r) => r.item, width: 34 },
-  { header: 'Currency', value: (r) => r.currency, width: 26 },
   { header: 'Records / Count', value: (r) => r.records },
-  { header: 'Value (in stated currency)', value: (r) => r.value, numFmt: '#,##0.00', width: 22 },
-  { header: 'Shipping (in stated currency)', value: (r) => r.shipping, numFmt: '#,##0.00', width: 22 },
-  { header: 'INR Value (source-reported)', value: (r) => r.inr, numFmt: '#,##0', width: 22 },
+  { header: 'INR Value', value: (r) => r.inr, numFmt: '#,##0', width: 22 },
+  { header: 'Quantity', value: (r) => r.note ?? null },
 ];
 
 export async function exportDashboard(data: DashboardData, filename: string, preamble: string[]) {

@@ -1,5 +1,5 @@
 import { lazy, Suspense, type ReactNode } from 'react';
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes, useParams } from 'react-router-dom';
 import { useAuth } from '@/auth/AuthProvider';
 import { RequireAdmin, RequireAuth, RequireDepartment } from '@/auth/guards';
 import { AppLayout } from '@/components/layout/AppLayout';
@@ -20,12 +20,8 @@ const UsersPage = lazy(() => import('@/pages/UsersPage').then((m) => ({ default:
 const SettingsPage = lazy(() => import('@/pages/SettingsPage').then((m) => ({ default: m.SettingsPage })));
 const ProfilePage = lazy(() => import('@/pages/ProfilePage').then((m) => ({ default: m.ProfilePage })));
 const PerformancePage = lazy(() => import('@/pages/performance/PerformancePage').then((m) => ({ default: m.PerformancePage })));
-const ManagerProfilePage = lazy(() => import('@/pages/performance/ManagerProfilePage').then((m) => ({ default: m.ManagerProfilePage })));
-const ComparePage = lazy(() => import('@/pages/performance/ComparePage').then((m) => ({ default: m.ComparePage })));
-const ZonesPage = lazy(() => import('@/pages/performance/ZonesPage').then((m) => ({ default: m.ZonesPage })));
+const DrillPage = lazy(() => import('@/pages/performance/DrillPage').then((m) => ({ default: m.DrillPage })));
 const MonthlyReportPage = lazy(() => import('@/pages/performance/MonthlyReportPage').then((m) => ({ default: m.MonthlyReportPage })));
-const RankingsPage = lazy(() => import('@/pages/performance/RankingsPage').then((m) => ({ default: m.RankingsPage })));
-const TargetsPage = lazy(() => import('@/pages/performance/TargetsPage').then((m) => ({ default: m.TargetsPage })));
 const DepartmentPage = lazy(() => import('@/pages/DepartmentPage').then((m) => ({ default: m.DepartmentPage })));
 
 function PageFallback() {
@@ -44,6 +40,12 @@ function PageFallback() {
 
 const page = (el: ReactNode) => <Suspense fallback={<PageFallback />}>{el}</Suspense>;
 const npp = (el: ReactNode) => <RequireDepartment code="npp">{page(el)}</RequireDepartment>;
+
+/** Old manager-profile links open the manager level of the drill-down. */
+function ManagerRedirect() {
+  const { key } = useParams();
+  return <Navigate to={`/performance/drill?m=${encodeURIComponent(key ?? '')}`} replace />;
+}
 
 function HomeRedirect() {
   const { isAdmin, profile, loading } = useAuth();
@@ -70,13 +72,10 @@ export default function App() {
         <Route path="overview" element={page(<OverviewPage />)} />
         <Route path="dashboard" element={npp(<DashboardPage />)} />
         <Route path="performance" element={npp(<PerformancePage />)} />
-        <Route path="performance/managers" element={npp(<ManagerProfilePage />)} />
-        <Route path="performance/managers/:key" element={npp(<ManagerProfilePage />)} />
-        <Route path="performance/compare" element={npp(<ComparePage />)} />
-        <Route path="performance/zones" element={npp(<ZonesPage />)} />
+        <Route path="performance/drill" element={npp(<DrillPage />)} />
         <Route path="performance/report" element={npp(<MonthlyReportPage />)} />
-        <Route path="performance/rankings" element={npp(<RankingsPage />)} />
-        <Route path="performance/targets" element={npp(<TargetsPage />)} />
+        <Route path="performance/managers/:key" element={<ManagerRedirect />} />
+        <Route path="performance/*" element={<Navigate to="/performance" replace />} />
         <Route path="sales" element={npp(<SalesPage />)} />
         <Route path="sync" element={npp(<SyncPage />)} />
         <Route path="reports" element={npp(<ReportsPage />)} />

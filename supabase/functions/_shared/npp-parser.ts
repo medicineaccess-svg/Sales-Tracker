@@ -346,10 +346,25 @@ export function channelOf(manager: string | null): SalesChannel {
   return 'individual';
 }
 
-/** "HO South Zone" → "South Zone"; blank → null. */
+/** "HO South Zone (Fazan)" → "South Zone"; blank → null. */
 export function zoneBase(zone: string | null | undefined): string | null {
-  const z = collapse(zone).replace(/^HO\s+/i, '');
+  const z = collapse(collapse(zone).replace(/\(.*\)/g, '')).replace(/^HO\s+/i, '');
   return z === '' ? null : z;
+}
+
+/**
+ * Manager a row is credited to: the "Ikris Manager Involved" name for individual rows, the name in
+ * brackets in Zone for HO rows ("HO North Zone (Firoz)" → "Firoz"), null for HO (Third Party).
+ * Mirrors the generated column npp_sales.credited_manager.
+ */
+export function creditedManager(manager: string | null, zone: string | null | undefined): string | null {
+  const ch = channelOf(manager);
+  if (ch === 'individual') return collapse(manager);
+  if (ch === 'ho') {
+    const m = collapse(zone).match(/\(([^)]*)\)/);
+    return m && collapse(m[1]) ? collapse(m[1]) : null;
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------

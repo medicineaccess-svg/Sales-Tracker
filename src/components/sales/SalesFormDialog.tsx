@@ -1,21 +1,18 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, Calculator } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
 import { Modal } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Field, Input, Select, Textarea } from '@/components/ui/form';
+import { Field, Input } from '@/components/ui/form';
 import { useFilterOptions } from '@/hooks/useData';
-import { useDebounce } from '@/hooks/useFilters';
 import { friendlyError, notify } from '@/lib/errors';
 import {
-  CURRENCIES,
   UNITS,
   emptySalesForm,
   salesSchema,
   salesToForm,
-  suggestValue,
   toSalesPayload,
   type SalesFormOutput,
   type SalesFormValues,
@@ -40,8 +37,6 @@ export function SalesFormDialog({
     register,
     handleSubmit,
     reset,
-    watch,
-    setValue,
     formState: { errors, isDirty },
   } = useForm<SalesFormValues, unknown, SalesFormOutput>({
     resolver: zodResolver(salesSchema),
@@ -51,27 +46,6 @@ export function SalesFormDialog({
   useEffect(() => {
     if (open) reset(record ? salesToForm(record as unknown as Record<string, unknown>) : emptySalesForm);
   }, [open, record, reset]);
-
-  // Duplicate voucher warning (non-blocking — the sheet itself contains legitimate edge cases)
-  const voucher = useDebounce(watch('voucher_no')?.trim() ?? '', 400);
-  const [duplicate, setDuplicate] = useState(false);
-  useEffect(() => {
-    let cancelled = false;
-    if (!open || !voucher) {
-      setDuplicate(false);
-      return;
-    }
-    let q = supabase.from('npp_sales').select('id', { count: 'exact', head: true }).ilike('voucher_no', voucher.replace(/[%_]/g, '\\$&'));
-    if (record?.id) q = q.neq('id', record.id);
-    q.then(({ count }) => !cancelled && setDuplicate((count ?? 0) > 0));
-    return () => {
-      cancelled = true;
-    };
-  }, [voucher, open, record?.id]);
-
-  const quantity = watch('quantity');
-  const rate = watch('rate');
-  const suggested = suggestValue(quantity ?? '', (rate ?? '').replace(/,/g, ''));
 
   const mutation = useMutation({
     mutationFn: async (v: SalesFormOutput) => {
@@ -96,14 +70,6 @@ export function SalesFormDialog({
 
   const issues = (record?.data_issues ?? []) as DataIssue[];
 
-  const dcSelect = (name: 'gross_total_dc' | 'export_sales_dc' | 'shipping_charges_dc') => (
-    <Select {...register(name)} className="w-20 shrink-0" aria-label="Dr / Cr">
-      <option value="">—</option>
-      <option value="Dr">Dr</option>
-      <option value="Cr">Cr</option>
-    </Select>
-  );
-
   return (
     <Modal
       open={open}
@@ -112,7 +78,7 @@ export function SalesFormDialog({
       description={
         editing && record?.source === 'google_sheets'
           ? 'This record was imported from Google Sheets. Saving marks it as edited in the CRM; later sheet changes will be held for review instead of overwriting it.'
-          : 'All amounts are stored exactly as entered, in the selected currency.'
+          : 'Same columns as the NPM Sales sheet. INR Value is stored exactly as entered.'
       }
       size="lg"
       footer={
@@ -132,50 +98,40 @@ export function SalesFormDialog({
         <datalist id="dl-hospitals">{opts?.hospitals.map((p) => <option key={p} value={p} />)}</datalist>
         <datalist id="dl-doctors">{opts?.doctors.map((p) => <option key={p} value={p} />)}</datalist>
         <datalist id="dl-places">{opts?.places.map((p) => <option key={p} value={p} />)}</datalist>
+        <datalist id="dl-zones">{(opts?.zones ?? []).map((p) => <option key={p} value={p} />)}</datalist>
 
         <fieldset className="grid gap-4 sm:grid-cols-3">
           <legend className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted">Sale</legend>
           <Field label="Date" htmlFor="sale_date" required error={errors.sale_date?.message}>
             <Input id="sale_date" type="date" {...register('sale_date')} aria-invalid={!!errors.sale_date} />
           </Field>
-          <Field
-            label="Voucher no."
-            htmlFor="voucher_no"
-            required
-            error={errors.voucher_no?.message}
-            hint={
-              duplicate ? (
-                <span className="inline-flex items-center gap-1 text-[#8a5410]">
-                  <AlertTriangle className="h-3 w-3" /> Another record already uses this voucher number
-                </span>
-              ) : undefined
-            }
-          >
-            <Input id="voucher_no" placeholder="INV/IGL/26-27/001" {...register('voucher_no')} aria-invalid={!!errors.voucher_no} />
-          </Field>
-          <Field label="Customer / patient (Particulars)" htmlFor="particulars" required error={errors.particulars?.message}>
+          <Field label="Particulars" htmlFor="particulars" required error={errors.particulars?.message}>
             <Input id="particulars" autoComplete="off" {...register('particulars')} aria-invalid={!!errors.particulars} />
           </Field>
-          <Field label="Product name" htmlFor="product_name" required error={errors.product_name?.message}>
+          <Field label="Product Name" htmlFor="product_name" required error={errors.product_name?.message}>
             <Input id="product_name" list="dl-products" {...register('product_name')} aria-invalid={!!errors.product_name} />
           </Field>
           <Field label="Place of sale" htmlFor="place_of_sale" error={errors.place_of_sale?.message}>
             <Input id="place_of_sale" list="dl-places" {...register('place_of_sale')} />
           </Field>
-          <Field label="Ikris manager involved" htmlFor="manager" error={errors.manager?.message}>
+          <Field label="Ikris Manager Involved" htmlFor="manager" error={errors.manager?.message}>
             <Input id="manager" list="dl-managers" {...register('manager')} />
           </Field>
-          <Field label="Concerned doctor" htmlFor="doctor_name" error={errors.doctor_name?.message}>
+          <Field
+            label="Zone"
+            htmlFor="zone"
+            error={errors.zone?.message}
+            hint="For HO sales write the manager in brackets, e.g. HO North Zone (Firoz)."
+          >
+            <Input id="zone" list="dl-zones" {...register('zone')} />
+          </Field>
+          <Field label="Concerned Doctor name" htmlFor="doctor_name" error={errors.doctor_name?.message}>
             <Input id="doctor_name" list="dl-doctors" {...register('doctor_name')} />
           </Field>
-          <Field label="Hospital" htmlFor="hospital_name" error={errors.hospital_name?.message} className="sm:col-span-2">
+          <Field label="Hospital Name" htmlFor="hospital_name" error={errors.hospital_name?.message} className="sm:col-span-2">
             <Input id="hospital_name" list="dl-hospitals" {...register('hospital_name')} />
           </Field>
-        </fieldset>
-
-        <fieldset className="grid gap-4 sm:grid-cols-3">
-          <legend className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted">Quantity & value</legend>
-          <Field label="Quantity" htmlFor="quantity" required error={errors.quantity?.message}>
+          <Field label="Quantity" htmlFor="quantity" error={errors.quantity?.message}>
             <div className="flex gap-2">
               <Input id="quantity" inputMode="decimal" {...register('quantity')} aria-invalid={!!errors.quantity} />
               <Input list="dl-units" className="w-24 shrink-0" aria-label="Unit" {...register('quantity_unit')} />
@@ -183,60 +139,8 @@ export function SalesFormDialog({
             </div>
             {errors.quantity_unit && <p className="mt-1 text-xs text-danger">{errors.quantity_unit.message}</p>}
           </Field>
-          <Field label="Currency" htmlFor="currency" required error={errors.currency?.message}>
-            <Select id="currency" {...register('currency')}>
-              {CURRENCIES.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="Rate (per unit)" htmlFor="rate" required error={errors.rate?.message}>
-            <Input id="rate" inputMode="decimal" {...register('rate')} aria-invalid={!!errors.rate} />
-          </Field>
-          <Field
-            label="Value"
-            htmlFor="value"
-            required
-            error={errors.value?.message}
-            hint={
-              suggested ? (
-                <button type="button" className="inline-flex items-center gap-1 text-brand hover:underline" onClick={() => setValue('value', suggested, { shouldDirty: true, shouldValidate: true })}>
-                  <Calculator className="h-3 w-3" /> Use quantity × rate = {suggested}
-                </button>
-              ) : undefined
-            }
-          >
-            <Input id="value" inputMode="decimal" {...register('value')} aria-invalid={!!errors.value} />
-          </Field>
-          <Field label="INR value (as reported)" htmlFor="inr_value" error={errors.inr_value?.message} hint="Enter the reported INR figure — the CRM does not convert currencies.">
-            <Input id="inr_value" inputMode="decimal" {...register('inr_value')} />
-          </Field>
-        </fieldset>
-
-        <fieldset className="grid gap-4 sm:grid-cols-3">
-          <legend className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted">Accounting (optional)</legend>
-          <Field label="Gross total" htmlFor="gross_total" error={errors.gross_total?.message}>
-            <div className="flex gap-2">
-              <Input id="gross_total" inputMode="decimal" {...register('gross_total')} />
-              {dcSelect('gross_total_dc')}
-            </div>
-          </Field>
-          <Field label="Export sales" htmlFor="export_sales" error={errors.export_sales?.message}>
-            <div className="flex gap-2">
-              <Input id="export_sales" inputMode="decimal" {...register('export_sales')} />
-              {dcSelect('export_sales_dc')}
-            </div>
-          </Field>
-          <Field label="Shipping charges" htmlFor="shipping_charges" error={errors.shipping_charges?.message}>
-            <div className="flex gap-2">
-              <Input id="shipping_charges" inputMode="decimal" {...register('shipping_charges')} />
-              {dcSelect('shipping_charges_dc')}
-            </div>
-          </Field>
-          <Field label="Remarks" htmlFor="remarks" error={errors.remarks?.message} className="sm:col-span-3">
-            <Textarea id="remarks" rows={2} {...register('remarks')} />
+          <Field label="INR Value" htmlFor="inr_value" required error={errors.inr_value?.message}>
+            <Input id="inr_value" inputMode="decimal" {...register('inr_value')} aria-invalid={!!errors.inr_value} />
           </Field>
         </fieldset>
 

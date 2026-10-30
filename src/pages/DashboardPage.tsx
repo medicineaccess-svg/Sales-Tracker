@@ -1,10 +1,13 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { Activity, AlertTriangle, Building, CalendarRange, ClipboardList, Coins, Download, FileSpreadsheet, IndianRupee, Package, Pill, RefreshCw, Search, Stethoscope, Truck } from 'lucide-react';
+import { AlertTriangle, ArrowRight, Building, CalendarRange, ClipboardList, Download, FileSpreadsheet, IndianRupee, MapPin, Package, Pill, RefreshCw, Search, Stethoscope, Users } from 'lucide-react';
 import { motion, useReducedMotion } from 'motion/react';
 import { FilterBar } from '@/components/dashboard/FilterBar';
-import { AnimatedNumber, KpiCard } from '@/components/dashboard/KpiCard';
+import { KpiCard } from '@/components/dashboard/KpiCard';
+import { ManagerCards } from '@/components/performance/hierPanels';
+import { useHierModel } from '@/components/performance/hierUi';
+import { fyRange } from '@/lib/filters';
 import { useAuth } from '@/auth/AuthProvider';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/form';
@@ -13,11 +16,9 @@ import {
   ChartCard,
   ContributionDonut,
   MetricSwitch,
-  MonthlyCurrencyBars,
   MonthlyInrBars,
   TrendLine,
   breakdownTable,
-  monthlyCurrencyTable,
   useMonthlyInr,
   type BreakdownMetric,
 } from '@/components/dashboard/charts';
@@ -29,34 +30,10 @@ import { supabase } from '@/lib/supabase';
 import { useFilters } from '@/hooks/useFilters';
 import { describeFilters, toRpcFilters, type SalesFilters } from '@/lib/filters';
 import { friendlyError, notify } from '@/lib/errors';
-import { CURRENCY_LABEL, CURRENCY_ORDER, formatDate, formatDateTime, formatInrShort, formatMoney, formatMonth, formatNumber, relativeTime } from '@/lib/format';
-import type { CurrencyBucket, CurrencyTotals } from '@/types/database';
-
-function CurrencyLines({ rows, field }: { rows: CurrencyTotals[]; field: 'value' | 'shipping' | 'avg_value' }) {
-  const sorted = [...rows].sort((a, b) => CURRENCY_ORDER.indexOf(a.currency) - CURRENCY_ORDER.indexOf(b.currency));
-  const visible = sorted.filter((r) => r[field] !== null && Number(r[field]) !== 0);
-  if (!visible.length) return <span>—</span>;
-  return (
-    <div className="space-y-0.5">
-      {visible.map((r) => (
-        <div key={r.currency} className={visible.length > 1 ? 'text-lg leading-snug' : undefined}>
-          {r.currency === 'UNSPECIFIED' ? (
-            <span title="Rate column has no currency symbol">
-              {formatMoney(r[field], 'UNSPECIFIED')} <span className="text-xs font-normal text-muted">(currency not stated)</span>
-            </span>
-          ) : (
-            <AnimatedNumber value={Number(r[field])} format={(v) => formatMoney(v, r.currency as CurrencyBucket)} />
-          )}
-        </div>
-      ))}
-    </div>
-  );
-}
+import { formatDate, formatDateTime, formatInrShort, formatMoney, formatMonth, formatNumber, relativeTime } from '@/lib/format';
 
 const BREAKDOWN_OPTIONS: { value: BreakdownMetric; label: string }[] = [
   { value: 'inr_value', label: 'INR' },
-  { value: 'value_usd', label: 'USD' },
-  { value: 'value_eur', label: 'EUR' },
   { value: 'records', label: 'Records' },
 ];
 
@@ -75,12 +52,11 @@ function HospitalDetails({ filters }: { filters: SalesFilters }) {
   const [q, setQ] = useState('');
   const { data, isLoading, isError, error, refetch } = useReport('hospital', filters);
   const rows = useMemo(() => {
-    const map = new Map<string, { key: string; records: number; inr: number; value: Partial<Record<CurrencyBucket, number>> }>();
+    const map = new Map<string, { key: string; records: number; inr: number }>();
     for (const r of data ?? []) {
-      const cur = map.get(r.group_key) ?? { key: r.group_key, records: 0, inr: 0, value: {} };
+      const cur = map.get(r.group_key) ?? { key: r.group_key, records: 0, inr: 0 };
       cur.records += Number(r.records);
       cur.inr += Number(r.inr_value);
-      cur.value[r.currency] = (cur.value[r.currency] ?? 0) + Number(r.value);
       map.set(r.group_key, cur);
     }
     return [...map.values()].sort((a, b) => b.inr - a.inr);
@@ -109,7 +85,6 @@ function HospitalDetails({ filters }: { filters: SalesFilters }) {
               <tr className="text-left text-muted">
                 <th className="px-3 py-2 font-medium">Hospital</th>
                 <th className="px-3 py-2 text-right font-medium">Records</th>
-                <th className="px-3 py-2 text-right font-medium">Value (per currency)</th>
                 <th className="px-3 py-2 text-right font-medium">INR Value</th>
               </tr>
             </thead>
@@ -117,14 +92,14 @@ function HospitalDetails({ filters }: { filters: SalesFilters }) {
               {isLoading &&
                 [0, 1, 2].map((i) => (
                   <tr key={i}>
-                    <td colSpan={4} className="px-3 py-2">
+                    <td colSpan={3} className="px-3 py-2">
                       <div className="h-4 animate-pulse rounded bg-line/70" />
                     </td>
                   </tr>
                 ))}
               {!isLoading && !visible.length && (
                 <tr>
-                  <td colSpan={4} className="px-3 py-4 text-center text-muted">
+                  <td colSpan={3} className="px-3 py-4 text-center text-muted">
                     {term ? 'No hospital matches your search.' : 'No hospitals in this view.'}
                   </td>
                 </tr>
@@ -137,11 +112,6 @@ function HospitalDetails({ filters }: { filters: SalesFilters }) {
                     </Link>
                   </td>
                   <td className="tabular px-3 py-1.5 text-right">{formatNumber(r.records)}</td>
-                  <td className="tabular px-3 py-1.5 text-right">
-                    {CURRENCY_ORDER.filter((c) => c !== 'INR' && r.value[c])
-                      .map((c) => formatMoney(r.value[c]!, c, { compact: true }))
-                      .join(' · ') || '—'}
-                  </td>
                   <td className="tabular px-3 py-1.5 text-right">{formatMoney(r.inr, 'INR')}</td>
                 </tr>
               ))}
@@ -163,6 +133,12 @@ export function DashboardPage() {
   const [contribBy, setContribBy] = useState<'product' | 'manager'>('product');
   const [contribMetric, setContribMetric] = useState<'inr_value' | 'records'>('inr_value');
   const inrMonthly = useMonthlyInr(data?.monthly);
+  // Manager cards follow the dashboard's FY / month filter
+  const hierParams = {
+    fy: filters.fy ? Number(fyRange(filters.fy)?.from.slice(0, 4)) || undefined : undefined,
+    month: filters.month ? `${filters.month}-01` : undefined,
+  };
+  const hier = useHierModel(hierParams);
   const { profile, departmentCode } = useAuth();
   const runs = useSyncRuns(5);
   const queryClient = useQueryClient();
@@ -198,7 +174,7 @@ export function DashboardPage() {
         'Ikris Pharma Network — NPP Sales Dashboard report',
         `Generated ${new Date().toLocaleString('en-IN')}`,
         `Filters: ${describeFilters(filters).join(' · ')}`,
-        'Values are per currency and never combined; INR Value is the source-reported figure (no conversion applied).',
+        'INR Value is the figure in the sheet (no conversion applied).',
       ]);
       void supabase.rpc('log_client_event', {
         p_action: 'report.export',
@@ -268,10 +244,10 @@ export function DashboardPage() {
           </div>
         </div>
         <p className="relative mt-4 max-w-3xl text-xs text-white/70">
-          Monetary values are shown in their own currency and never combined. INR Value is the figure reported in the source sheet and is never recalculated.
+          Figures come only from the sheet’s columns. INR Value is the figure reported in the sheet and is never recalculated.
         </p>
       </motion.section>
-      <FilterBar filters={filters} onChange={update} onReset={reset} />
+      <FilterBar filters={filters} onChange={update} onReset={reset} fields={['fy', 'month', 'dates', 'product', 'manager', 'hospital', 'doctor', 'place']} />
 
       {isError && data && <StaleBanner message={friendlyError(error)} onRetry={() => refetch()} />}
       {isError && !data ? (
@@ -284,24 +260,23 @@ export function DashboardPage() {
               className="mb-4 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-[#6b3f0a] hover:bg-amber-100"
             >
               <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden />
-              {t.needs_review} record(s) in this view have data-quality flags from the sheet (e.g. missing date or currency). Review them →
+              {t.needs_review} record(s) in this view have data-quality flags from the sheet (e.g. missing date or quantity). Review them →
             </Link>
           )}
 
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <KpiCard index={0} highlight loading={loading} icon={Coins} label="Total sales value" value={<CurrencyLines rows={data?.by_currency ?? []} field="value" />} sub="Sheet “Value” column, per currency" />
             <KpiCard
-              index={1}
+              index={0}
               loading={loading}
               icon={IndianRupee}
               label="Total INR value"
               highlight
               numeric={t ? Number(t.inr_value) : null}
               format={formatInrShort}
-              sub={`${formatMoney(t?.inr_value, 'INR')} · source-reported`}
+              sub={`${formatMoney(t?.inr_value, 'INR')} · sheet INR Value`}
             />
             <KpiCard
-              index={2}
+              index={1}
               loading={loading}
               icon={ClipboardList}
               label="Sales records"
@@ -310,7 +285,7 @@ export function DashboardPage() {
               sub={t?.undated ? `${t.undated} without a date in the sheet` : t?.first_date ? `${t.first_date} → ${t.last_date}` : undefined}
             />
             <KpiCard
-              index={3}
+              index={2}
               loading={loading}
               icon={Package}
               label="Quantity sold"
@@ -325,25 +300,45 @@ export function DashboardPage() {
               }
               sub="Summed per unit — packs, vials and pens are not added together"
             />
-            <KpiCard index={4} loading={loading} icon={Truck} label="Shipping charges" value={<CurrencyLines rows={data?.by_currency ?? []} field="shipping" />} sub="Reported separately — not added to sales" />
-            <KpiCard index={5} loading={loading} icon={Activity} label="Avg. value per record" value={<CurrencyLines rows={data?.by_currency ?? []} field="avg_value" />} sub="Mean of “Value”, per currency" />
+            <KpiCard index={3} loading={loading} icon={Pill} label="Products" numeric={t ? Number(t.products) : null} format={(v) => formatNumber(Math.round(v))} sub="Distinct product names" />
+            <KpiCard index={4} loading={!hier.model} icon={Users} label="Managers with sales" numeric={hier.model ? hier.model.tree.managers.length : null} format={(v) => formatNumber(Math.round(v))} sub={hier.model?.tree.managers[0] ? `Top: ${hier.model.tree.managers[0].label}` : undefined} />
+            <KpiCard index={5} loading={!hier.model} icon={MapPin} label="Zones" numeric={hier.model ? new Set(hier.model.tree.managers.flatMap((m) => m.zones)).size : null} format={(v) => formatNumber(Math.round(v))} sub="From the sheet’s Zone column" />
             <KpiCard index={6} loading={loading} icon={Building} label="Unique hospitals" numeric={t ? Number(t.hospitals) : null} format={(v) => formatNumber(Math.round(v))} sub="Distinct hospital names" />
             <KpiCard index={7} loading={loading} icon={Stethoscope} label="Unique doctors" numeric={t ? Number(t.doctors) : null} format={(v) => formatNumber(Math.round(v))} sub="Distinct names (spelling variants count separately)" />
           </div>
 
+          <section className="mt-6" aria-labelledby="mgr-perf">
+            <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
+              <h2 id="mgr-perf" className="text-sm font-semibold text-navy">
+                Manager performance{hierParams.month ? ` · ${formatMonth(hierParams.month.slice(0, 7))}` : hier.model ? ` · FY ${hier.model.fy}-${String((hier.model.fy + 1) % 100).padStart(2, '0')}` : ''}
+              </h2>
+              <Link to="/performance/drill" className="inline-flex items-center gap-1 text-xs font-semibold text-brand hover:underline">
+                Open drill-down <ArrowRight className="h-3 w-3" aria-hidden />
+              </Link>
+            </div>
+            {hier.model ? (
+              <ManagerCards
+                tree={hier.model.tree}
+                fyTree={hier.model.fyTree}
+                months={hier.model.months}
+                upTo={hier.model.upTo}
+                hrefFor={(k) => `/performance/drill?${new URLSearchParams({ m: k, fy: String(hier.model!.fy), ...(hierParams.month ? { month: hierParams.month } : {}) })}`}
+              />
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {[0, 1, 2].map((i) => (
+                  <div key={i} className="h-40 animate-pulse rounded-2xl bg-line/60" />
+                ))}
+              </div>
+            )}
+            <p className="mt-2 text-xs text-muted">Each card is the manager’s individual achievement: own sales + HO sales named for them in the Zone column (e.g. “HO North Zone (Firoz)”). Click a card to drill down.</p>
+          </section>
+
           <div className="mt-6 grid gap-4 xl:grid-cols-2">
             <ChartCard
-              title="Monthly sales value"
-              description="Sum of Value per month — one bar per currency"
-              loading={loading}
-              empty={empty || !data?.monthly.length}
-              table={data ? monthlyCurrencyTable(data.monthly, 'value') : undefined}
-            >
-              {data && <MonthlyCurrencyBars monthly={data.monthly} metric="value" />}
-            </ChartCard>
-            <ChartCard
+              className="xl:col-span-2"
               title="Monthly INR sales"
-              description="Source-reported INR Value per month (all currencies)"
+              description="Sheet INR Value per month"
               loading={loading}
               empty={empty || !inrMonthly.length}
               table={{
@@ -441,21 +436,9 @@ export function DashboardPage() {
             >
               {data && <ContributionDonut rows={contribBy === 'product' ? data.by_product : data.by_manager} metric={contribMetric} />}
             </ChartCard>
-            <ChartCard
-              title="Shipping charges"
-              description="Monthly shipping, per currency"
-              loading={loading}
-              empty={empty || !data?.monthly.some((m) => Number(m.shipping) > 0)}
-              table={data ? monthlyCurrencyTable(data.monthly, 'shipping') : undefined}
-            >
-              {data && <MonthlyCurrencyBars monthly={data.monthly} metric="shipping" />}
-            </ChartCard>
           </div>
 
-          <p className="mt-6 text-xs text-muted">
-            Applied filters: {describeFilters(filters).join(' · ')}. Currencies shown:{' '}
-            {(data?.by_currency ?? []).map((c) => CURRENCY_LABEL[c.currency]).join(', ') || '—'}.
-          </p>
+          <p className="mt-6 text-xs text-muted">Applied filters: {describeFilters(filters).join(' · ')}.</p>
         </>
       )}
     </div>

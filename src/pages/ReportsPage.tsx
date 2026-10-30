@@ -11,12 +11,12 @@ import { useFilters } from '@/hooks/useFilters';
 import { describeFilters } from '@/lib/filters';
 import { downloadCsv, downloadXlsx, stamp, type ExportColumn } from '@/lib/export';
 import { friendlyError, notify } from '@/lib/errors';
-import { CURRENCY_LABEL, CURRENCY_ORDER, formatDateTime, formatMoney, formatNumber } from '@/lib/format';
+import { formatDateTime, formatMoney, formatNumber } from '@/lib/format';
 import { supabase } from '@/lib/supabase';
 import { cn } from '@/lib/utils';
-import type { CurrencyBucket, ReportRow, SyncRun } from '@/types/database';
+import type { ReportRow, SyncRun } from '@/types/database';
 
-type ReportId = ReportGroup | 'shipping' | 'history' | 'sync';
+type ReportId = ReportGroup | 'history' | 'sync';
 
 const REPORTS: { id: ReportId; label: string; group?: ReportGroup; description: string }[] = [
   { id: 'day', label: 'Daily sales', group: 'day', description: 'Totals per sale date.' },
@@ -28,7 +28,6 @@ const REPORTS: { id: ReportId; label: string; group?: ReportGroup; description: 
   { id: 'hospital', label: 'Hospital-wise', group: 'hospital', description: 'Totals per hospital.' },
   { id: 'doctor', label: 'Doctor-wise', group: 'doctor', description: 'Totals per concerned doctor.' },
   { id: 'place', label: 'Place of sale', group: 'place', description: 'Totals per place of sale.' },
-  { id: 'shipping', label: 'Shipping charges', group: 'month', description: 'Monthly shipping charges per currency.' },
   { id: 'history', label: 'Sales record history', description: 'Record-level export and change history.' },
   { id: 'sync', label: 'Sheets sync report', description: 'Google Sheets import and synchronisation runs.' },
 ];
@@ -37,30 +36,22 @@ interface PivotRow {
   key: string;
   records: number;
   inr: number;
-  value: Partial<Record<CurrencyBucket, number>>;
-  shipping: Partial<Record<CurrencyBucket, number>>;
 }
 
-function pivot(rows: ReportRow[]): { data: PivotRow[]; currencies: CurrencyBucket[] } {
+/** Report rows come split by the legacy currency bucket; the current sheet only has INR Value, so merge them. */
+function pivot(rows: ReportRow[]): PivotRow[] {
   const map = new Map<string, PivotRow>();
-  const currencies = new Set<CurrencyBucket>();
   for (const r of rows) {
-    currencies.add(r.currency);
-    const p = map.get(r.group_key) ?? { key: r.group_key, records: 0, inr: 0, value: {}, shipping: {} };
+    const p = map.get(r.group_key) ?? { key: r.group_key, records: 0, inr: 0 };
     p.records += Number(r.records);
     p.inr += Number(r.inr_value);
-    p.value[r.currency] = (p.value[r.currency] ?? 0) + Number(r.value);
-    p.shipping[r.currency] = (p.shipping[r.currency] ?? 0) + Number(r.shipping);
     map.set(r.group_key, p);
   }
-  return { data: [...map.values()], currencies: CURRENCY_ORDER.filter((c) => currencies.has(c)) };
+  return [...map.values()];
 }
 
 const DEFINITIONS = [
   ['Records', 'Number of active (non-archived) sales records matching the filters.'],
-  ['Value', 'Sum of the sheet “Value” column, kept separate per currency (taken from the $ / € symbol in Rate). Never converted.'],
-  ['Currency not stated', 'Rows whose Rate has no currency symbol in the sheet; their Value is shown separately.'],
-  ['Shipping', 'Sum of “Shipping Charges”, per currency. Reported separately and not added to sales value.'],
   ['INR Value', 'Sum of the sheet “INR Value” column as reported by the source. The CRM does not apply exchange rates.'],
   ['Undated', 'Rows that have no date in the sheet; they are excluded whenever a date filter is applied.'],
 ];
@@ -137,30 +128,21 @@ export function ReportsPage() {
   const [reportId, setReportId] = useState<ReportId>('month');
   const report = REPORTS.find((r) => r.id === reportId)!;
   const { data, isLoading, isError, error, refetch, isFetching } = useReport(report.group ?? 'month', filters, !!report.group);
-  const { data: pivoted, currencies } = useMemo(() => pivot(data ?? []), [data]);
-  const shippingOnly = reportId === 'shipping';
+  const pivoted = useMemo(() => pivot(data ?? []), [data]);
 
   const totals = useMemo(() => {
-    const t: PivotRow = { key: 'Total', records: 0, inr: 0, value: {}, shipping: {} };
+    const t: PivotRow = { key: 'Total', records: 0, inr: 0 };
     for (const p of pivoted) {
       t.records += p.records;
       t.inr += p.inr;
-      for (const c of currencies) {
-        t.value[c] = (t.value[c] ?? 0) + (p.value[c] ?? 0);
-        t.shipping[c] = (t.shipping[c] ?? 0) + (p.shipping[c] ?? 0);
-      }
     }
     return t;
-  }, [pivoted, currencies]);
+  }, [pivoted]);
 
   const exportCols: ExportColumn<PivotRow>[] = [
     { header: report.label.replace(/ sales$/, ''), value: (r) => r.key, width: 28 },
     { header: 'Records', value: (r) => r.records },
-    ...(!shippingOnly
-      ? currencies.map<ExportColumn<PivotRow>>((c) => ({ header: `Value (${CURRENCY_LABEL[c]})`, value: (r) => r.value[c] ?? 0, numFmt: '#,##0.00' }))
-      : []),
-    ...currencies.map<ExportColumn<PivotRow>>((c) => ({ header: `Shipping (${CURRENCY_LABEL[c]})`, value: (r) => r.shipping[c] ?? 0, numFmt: '#,##0.00' })),
-    ...(!shippingOnly ? [{ header: 'INR Value (reported)', value: (r: PivotRow) => r.inr, numFmt: '#,##0' }] : []),
+    { header: 'INR Value', value: (r) => r.inr, numFmt: '#,##0' },
   ];
 
   const doExport = async (kind: 'csv' | 'xlsx') => {
@@ -168,7 +150,7 @@ export function ReportsPage() {
       `Ikris Pharma Network — NPP ${report.label} report`,
       `Generated ${new Date().toLocaleString('en-IN')}`,
       `Filters: ${describeFilters(filters).join(' · ')}`,
-      'Values are per currency; INR Value is the source-reported figure (no conversion applied).',
+      'INR Value is the figure in the sheet (no conversion applied).',
     ];
     const rows = [...pivoted, totals];
     const name = `npp-${reportId}-report-${stamp()}.${kind}`;
@@ -229,7 +211,7 @@ export function ReportsPage() {
         </Card>
       ) : (
         <>
-          <FilterBar filters={filters} onChange={update} onReset={reset} />
+          <FilterBar filters={filters} onChange={update} onReset={reset} fields={['fy', 'month', 'dates', 'product', 'manager', 'hospital', 'doctor', 'place']} />
           {isError && data && <StaleBanner message={friendlyError(error)} onRetry={() => refetch()} />}
           <Card>
             <CardHeader
@@ -240,7 +222,6 @@ export function ReportsPage() {
                   <span className="inline-flex items-center gap-1">
                     <CalendarDays className="h-3 w-3" /> {describeFilters(filters).join(' · ')}
                   </span>
-                  <span>Currencies: {currencies.map((c) => CURRENCY_LABEL[c]).join(', ') || '—'}</span>
                   {isFetching && <RefreshCw className="h-3 w-3 animate-spin text-brand" />}
                 </span>
               }
@@ -285,18 +266,7 @@ export function ReportsPage() {
                       <tr key={p.key} className="border-b border-line/60 ">
                         <td className="px-4 py-2 font-medium text-ink">{p.key}</td>
                         <td className="tabular px-4 py-2 text-right">{formatNumber(p.records)}</td>
-                        {!shippingOnly &&
-                          currencies.map((c) => (
-                            <td key={c} className="tabular px-4 py-2 text-right">
-                              {p.value[c] ? formatMoney(p.value[c], c) : '—'}
-                            </td>
-                          ))}
-                        {currencies.map((c) => (
-                          <td key={`s${c}`} className="tabular px-4 py-2 text-right text-muted">
-                            {p.shipping[c] ? formatMoney(p.shipping[c], c) : '—'}
-                          </td>
-                        ))}
-                        {!shippingOnly && <td className="tabular px-4 py-2 text-right font-medium">{formatMoney(p.inr, 'INR')}</td>}
+                        <td className="tabular px-4 py-2 text-right font-medium">{formatMoney(p.inr, 'INR')}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -304,18 +274,7 @@ export function ReportsPage() {
                     <tr className="sticky bottom-0 border-t-2 border-navy/20 bg-card font-semibold">
                       <td className="px-4 py-2.5">Total</td>
                       <td className="tabular px-4 py-2.5 text-right">{formatNumber(totals.records)}</td>
-                      {!shippingOnly &&
-                        currencies.map((c) => (
-                          <td key={c} className="tabular px-4 py-2.5 text-right">
-                            {formatMoney(totals.value[c] ?? 0, c)}
-                          </td>
-                        ))}
-                      {currencies.map((c) => (
-                        <td key={`s${c}`} className="tabular px-4 py-2.5 text-right">
-                          {formatMoney(totals.shipping[c] ?? 0, c)}
-                        </td>
-                      ))}
-                      {!shippingOnly && <td className="tabular px-4 py-2.5 text-right">{formatMoney(totals.inr, 'INR')}</td>}
+                      <td className="tabular px-4 py-2.5 text-right">{formatMoney(totals.inr, 'INR')}</td>
                     </tr>
                   </tfoot>
                 </table>
